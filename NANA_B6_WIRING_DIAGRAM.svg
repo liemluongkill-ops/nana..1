@@ -1,0 +1,238 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="2100" height="1500" viewBox="0 0 2100 1500">
+  <defs>
+    <style>
+      .paper { fill: #ffffff; }
+      .panel { fill: #f8fafb; stroke: #263238; stroke-width: 3; }
+      .subpanel { fill: #ffffff; stroke: #90a4ae; stroke-width: 2; }
+      .title { font: 700 34px 'Segoe UI', Arial, sans-serif; fill: #102027; }
+      .subtitle { font: 600 22px 'Segoe UI', Arial, sans-serif; fill: #37474f; }
+      .label { font: 600 20px 'Segoe UI', Arial, sans-serif; fill: #17252b; }
+      .small { font: 500 17px 'Segoe UI', Arial, sans-serif; fill: #263238; }
+      .tiny { font: 500 15px 'Segoe UI', Arial, sans-serif; fill: #455a64; }
+      .pin { font: 700 17px Consolas, 'Segoe UI', monospace; fill: #102027; }
+      .wire { fill: none; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
+      .p5 { stroke: #e53935; }
+      .p33 { stroke: #f39c12; }
+      .gnd { stroke: #202124; }
+      .bclk { stroke: #1565c0; }
+      .ws { stroke: #7b1fa2; }
+      .data { stroke: #00897b; }
+      .display { stroke: #0097a7; }
+      .speaker { stroke: #d81b60; }
+      .node5 { fill: #e53935; }
+      .node33 { fill: #f39c12; }
+      .nodeg { fill: #202124; }
+      .nodeb { fill: #1565c0; }
+      .nodew { fill: #7b1fa2; }
+      .noded { fill: #00897b; }
+      .warn { fill: #fff3e0; stroke: #ef6c00; stroke-width: 3; }
+    </style>
+  </defs>
+
+  <rect class="paper" x="0" y="0" width="2100" height="1500"/>
+  <text class="title" x="70" y="55">NANA PRESENCE V1 - SƠ ĐỒ HÀN DÂY B6</text>
+  <text class="subtitle" x="70" y="90">Nền trắng • nhìn từ trái sang phải • dấu chấm tròn là điểm nối chung</text>
+
+  <!-- Legend -->
+  <g transform="translate(70 120)">
+    <line class="wire p5" x1="0" y1="0" x2="65" y2="0"/><text class="small" x="78" y="6">5 V sau cầu chì/công tắc</text>
+    <line class="wire p33" x1="330" y1="0" x2="395" y2="0"/><text class="small" x="408" y="6">3.3 V</text>
+    <line class="wire gnd" x1="560" y1="0" x2="625" y2="0"/><text class="small" x="638" y="6">GND chung</text>
+    <line class="wire bclk" x1="780" y1="0" x2="845" y2="0"/><text class="small" x="858" y="6">GPIO41 / BCLK</text>
+    <line class="wire ws" x1="1080" y1="0" x2="1145" y2="0"/><text class="small" x="1158" y="6">GPIO42 / WS</text>
+    <line class="wire data" x1="1370" y1="0" x2="1435" y2="0"/><text class="small" x="1448" y="6">Dữ liệu audio</text>
+    <line class="wire display" x1="1665" y1="0" x2="1730" y2="0"/><text class="small" x="1743" y="6">Tín hiệu màn hình</text>
+  </g>
+
+  <!-- Power input -->
+  <rect class="panel" x="60" y="230" width="190" height="150" rx="10"/>
+  <text class="subtitle" x="89" y="265">ADAPTER</text>
+  <text class="label" x="102" y="300">5 V / 5 A</text>
+  <circle class="node5" cx="250" cy="300" r="8"/>
+  <text class="pin" x="175" y="325">+5V</text>
+  <circle class="nodeg" cx="250" cy="350" r="8"/>
+  <text class="pin" x="170" y="357">GND</text>
+
+  <rect class="subpanel" x="310" y="275" width="125" height="50" rx="8"/>
+  <text class="label" x="328" y="307">CẦU CHÌ 3A</text>
+  <line class="wire p5" x1="250" y1="300" x2="310" y2="300"/>
+
+  <rect class="subpanel" x="485" y="275" width="130" height="50" rx="8"/>
+  <text class="label" x="506" y="307">CÔNG TẮC</text>
+  <line class="wire p5" x1="435" y1="300" x2="485" y2="300"/>
+  <line class="wire p5" x1="615" y1="300" x2="680" y2="300"/>
+  <circle class="node5" cx="645" cy="300" r="9"/>
+  <text class="small" x="570" y="345">Nút +5V_SW</text>
+
+  <!-- ESP32 / terminal adapter -->
+  <rect class="panel" x="680" y="190" width="430" height="1150" rx="14"/>
+  <text class="title" x="742" y="235">ESP32-S3 N16R8</text>
+  <text class="subtitle" x="748" y="270">terminal adapter 44P</text>
+
+  <circle class="node5" cx="680" cy="300" r="8"/>
+  <text class="pin" x="700" y="307">5Vin</text>
+  <circle class="nodeg" cx="680" cy="350" r="8"/>
+  <text class="pin" x="700" y="357">GND</text>
+
+  <rect class="subpanel" x="735" y="300" width="320" height="225" rx="10"/>
+  <text class="subtitle" x="767" y="335">Camera OV5640 tích hợp</text>
+  <text class="small" x="767" y="375">Không hàn thêm dây camera</text>
+  <text class="small" x="767" y="410">GPIO camera đã dành riêng</text>
+  <text class="small" x="767" y="445">GPIO48: LED trạng thái trên bo</text>
+  <text class="small" x="767" y="480">microSD: THÁO RA</text>
+
+  <!-- ESP audio pins -->
+  <circle class="nodeb" cx="1110" cy="570" r="8"/><text class="pin" x="987" y="577">GPIO41</text>
+  <circle class="nodew" cx="1110" cy="630" r="8"/><text class="pin" x="987" y="637">GPIO42</text>
+  <circle class="noded" cx="1110" cy="690" r="8"/><text class="pin" x="987" y="697">GPIO47</text>
+  <circle class="noded" cx="1110" cy="750" r="8"/><text class="pin" x="1000" y="757">GPIO2</text>
+  <circle class="node33" cx="1110" cy="830" r="8"/><text class="pin" x="1017" y="837">3V3</text>
+  <circle class="noded" cx="1110" cy="920" r="8"/><text class="pin" x="987" y="927">GPIO21</text>
+
+  <!-- ESP display pins -->
+  <circle cx="1110" cy="1180" r="8" fill="#0097a7"/><text class="pin" x="987" y="1187">GPIO39</text>
+  <circle cx="1110" cy="1215" r="8" fill="#0097a7"/><text class="pin" x="987" y="1222">GPIO38</text>
+  <circle cx="1110" cy="1250" r="8" fill="#0097a7"/><text class="pin" x="1000" y="1257">GPIO1</text>
+  <circle cx="1110" cy="1285" r="8" fill="#0097a7"/><text class="pin" x="987" y="1292">GPIO40</text>
+  <circle cx="1110" cy="1320" r="8" fill="#0097a7"/><text class="pin" x="987" y="1327">GPIO14</text>
+
+  <!-- +5V branch to amp -->
+  <path class="wire p5" d="M645 300 V175 H1260 V235 H1300"/>
+  <circle class="node5" cx="645" cy="175" r="8"/>
+
+  <!-- Common GND rail -->
+  <path class="wire gnd" d="M250 350 H275 V1400 H2010"/>
+  <circle class="nodeg" cx="275" cy="1400" r="9"/>
+  <text class="subtitle" x="295" y="1435">GND_STAR - tất cả GND về thanh này, mỗi module một nhánh riêng</text>
+  <path class="wire gnd" d="M680 350 H650 V1400"/>
+  <circle class="nodeg" cx="650" cy="1400" r="8"/>
+
+  <!-- MAX98357 -->
+  <rect class="panel" x="1300" y="190" width="550" height="430" rx="14"/>
+  <text class="title" x="1430" y="225">MAX98357</text>
+  <text class="subtitle" x="1428" y="258">ampli I2S + hard mute</text>
+
+  <circle class="node5" cx="1300" cy="235" r="8"/><text class="pin" x="1320" y="242">VIN = 5V</text>
+  <circle class="nodeb" cx="1300" cy="330" r="8"/><text class="pin" x="1320" y="337">BCLK</text>
+  <circle class="nodew" cx="1300" cy="380" r="8"/><text class="pin" x="1320" y="387">LRC</text>
+  <circle class="noded" cx="1300" cy="430" r="8"/><text class="pin" x="1320" y="437">DIN</text>
+  <circle class="noded" cx="1300" cy="480" r="8"/><text class="pin" x="1320" y="487">SD</text>
+  <text class="small" x="1585" y="295">GAIN: để trống</text>
+
+  <!-- Amp wiring -->
+  <path class="wire bclk" d="M1110 570 H1160 V330 H1300"/>
+  <circle class="nodeb" cx="1160" cy="570" r="9"/>
+  <path class="wire ws" d="M1110 630 H1190 V380 H1300"/>
+  <circle class="nodew" cx="1190" cy="630" r="9"/>
+  <path class="wire data" d="M1110 690 H1210 V430 H1300"/>
+  <path class="wire data" d="M1110 750 H1230 V480 H1450"/>
+
+  <!-- Pull-down inset -->
+  <text class="label" x="1475" y="465">GPIO2 / SD hard mute</text>
+  <circle class="noded" cx="1450" cy="480" r="8"/>
+  <path d="M1450 480 V500 l-12 12 24 12 -24 12 24 12 -12 12 V580" fill="none" stroke="#202124" stroke-width="4"/>
+  <text class="small" x="1475" y="545">10 kΩ xuống GND</text>
+  <text class="tiny" x="1475" y="575">Không mắc nối tiếp trên dây GPIO2</text>
+
+  <!-- Local decoupling inset -->
+  <rect class="subpanel" x="1510" y="285" width="290" height="60" rx="8"/>
+  <text class="small" x="1525" y="312">1500µF song song VIN-GND</text>
+  <text class="tiny" x="1525" y="335">(+) VIN • (- vạch) GND • sát ampli</text>
+
+  <!-- Speaker -->
+  <line class="wire speaker" x1="1850" y1="330" x2="1950" y2="330"/>
+  <line class="wire speaker" x1="1850" y1="390" x2="1950" y2="390"/>
+  <text class="pin" x="1765" y="337">SPK+</text>
+  <text class="pin" x="1765" y="397">SPK-</text>
+  <rect class="panel" x="1950" y="285" width="120" height="150" rx="50"/>
+  <text class="label" x="1983" y="340">LOA</text>
+  <text class="small" x="1975" y="370">8Ω / 3W</text>
+  <text class="tiny" x="1915" y="470">Xoắn cặp SPK+/SPK-</text>
+
+  <!-- Amp GND and cap return -->
+  <circle class="nodeg" cx="1800" cy="620" r="8"/>
+  <text class="pin" x="1735" y="603">GND</text>
+  <path class="wire gnd" d="M1800 620 H1880 V1400"/>
+  <path class="wire gnd" d="M1450 580 V600 H1800 V620"/>
+  <circle class="nodeg" cx="1880" cy="1400" r="8"/>
+
+  <!-- INMP441 -->
+  <rect class="panel" x="1300" y="650" width="500" height="320" rx="14"/>
+  <text class="title" x="1455" y="695">INMP441</text>
+  <text class="subtitle" x="1450" y="727">micro I2S 3.3 V</text>
+  <circle class="node33" cx="1300" cy="790" r="8"/><text class="pin" x="1320" y="797">VCC / VDD</text>
+  <circle class="nodeb" cx="1300" cy="840" r="8"/><text class="pin" x="1320" y="847">SCK</text>
+  <circle class="nodew" cx="1300" cy="890" r="8"/><text class="pin" x="1320" y="897">WS</text>
+  <circle class="noded" cx="1300" cy="920" r="8"/><text class="pin" x="1320" y="927">SD → GPIO21</text>
+  <circle class="noded" cx="1650" cy="890" r="8"/>
+  <text class="label" x="1530" y="897">L/R</text>
+  <circle class="nodeg" cx="1750" cy="970" r="8"/>
+  <text class="pin" x="1675" y="953">GND</text>
+  <path class="wire gnd" d="M1650 890 V940 H1750 V970"/>
+
+  <!-- Shared 3V3 rail -->
+  <line class="wire p33" x1="1110" y1="830" x2="1240" y2="830"/>
+  <line class="wire p33" x1="1240" y1="790" x2="1240" y2="1145"/>
+  <circle class="node33" cx="1240" cy="830" r="9"/>
+  <line class="wire p33" x1="1240" y1="790" x2="1300" y2="790"/>
+  <text class="small" x="1140" y="815">3V3_STAR</text>
+
+  <!-- Shared clocks to mic -->
+  <path class="wire bclk" d="M1160 570 V840 H1300"/>
+  <path class="wire ws" d="M1190 630 V890 H1300"/>
+  <line class="wire data" x1="1110" y1="920" x2="1300" y2="920"/>
+  <path class="wire gnd" d="M1750 970 H1910 V1400"/>
+  <circle class="nodeg" cx="1910" cy="1400" r="8"/>
+
+  <!-- ST7789 -->
+  <rect class="panel" x="1300" y="1010" width="550" height="340" rx="14"/>
+  <text class="title" x="1450" y="1050">ST7789 1.69”</text>
+  <text class="subtitle" x="1460" y="1082">240×280 • SPI • 3.3 V</text>
+
+  <circle class="node33" cx="1300" cy="1110" r="8"/><text class="pin" x="1320" y="1117">VCC</text>
+  <circle class="node33" cx="1300" cy="1145" r="8"/><text class="pin" x="1320" y="1152">BLK</text>
+  <circle cx="1300" cy="1180" r="8" fill="#0097a7"/><text class="pin" x="1320" y="1187">SCL ← GPIO39</text>
+  <circle cx="1300" cy="1215" r="8" fill="#0097a7"/><text class="pin" x="1320" y="1222">SDA ← GPIO38</text>
+  <circle cx="1300" cy="1250" r="8" fill="#0097a7"/><text class="pin" x="1320" y="1257">RES ← GPIO1</text>
+  <circle cx="1300" cy="1285" r="8" fill="#0097a7"/><text class="pin" x="1320" y="1292">DC ← GPIO40</text>
+  <circle cx="1300" cy="1320" r="8" fill="#0097a7"/><text class="pin" x="1320" y="1327">CS ← GPIO14</text>
+  <circle class="nodeg" cx="1600" cy="1350" r="8"/>
+  <text class="pin" x="1525" y="1338">GND</text>
+
+  <!-- Display power -->
+  <line class="wire p33" x1="1240" y1="1110" x2="1300" y2="1110"/>
+  <line class="wire p33" x1="1240" y1="1145" x2="1300" y2="1145"/>
+
+  <!-- Display signals. Parallel paths are deliberately separated. -->
+  <line class="wire display" x1="1110" y1="1180" x2="1300" y2="1180"/>
+  <line class="wire display" x1="1110" y1="1215" x2="1300" y2="1215"/>
+  <line class="wire display" x1="1110" y1="1250" x2="1300" y2="1250"/>
+  <line class="wire display" x1="1110" y1="1285" x2="1300" y2="1285"/>
+  <line class="wire display" x1="1110" y1="1320" x2="1300" y2="1320"/>
+  <path class="wire gnd" d="M1600 1350 V1400"/>
+  <circle class="nodeg" cx="1600" cy="1400" r="8"/>
+
+  <!-- Notes -->
+  <rect class="warn" x="60" y="520" width="555" height="500" rx="12"/>
+  <text class="subtitle" x="90" y="565">THỨ TỰ HÀN / KIỂM TRA</text>
+  <text class="label" x="90" y="610">1. Rút USB + adapter + pin/BMS.</text>
+  <text class="label" x="90" y="650">2. Hàn module, không hàn ESP32.</text>
+  <text class="label" x="90" y="690">3. 16 AWG cho đường nguồn chính.</text>
+  <text class="label" x="90" y="730">4. 22 AWG cho nhánh và tín hiệu.</text>
+  <text class="label" x="90" y="770">5. Đo đúng 5.0 V và đúng cực.</text>
+  <text class="label" x="90" y="810">6. Tắt nguồn, đo chập từng net.</text>
+  <text class="label" x="90" y="850">7. Boot lần đầu chỉ với một nguồn.</text>
+  <text class="label" x="90" y="890">8. Loa phải im trước khi playback.</text>
+  <text class="small" x="90" y="940">Không cắm USB và 5 V ngoài cùng lúc.</text>
+  <text class="small" x="90" y="975">Không nối pin 2S2P/BMS trong gate này.</text>
+
+  <rect class="warn" x="60" y="1060" width="555" height="255" rx="12"/>
+  <text class="subtitle" x="90" y="1100">HAI CHÂN “SD” KHÁC NHAU</text>
+  <text class="label" x="90" y="1150">INMP441 SD → GPIO21</text>
+  <text class="label" x="90" y="1200">MAX98357 SD → GPIO2</text>
+  <text class="small" x="90" y="1240">GPIO2/SD còn kéo xuống GND bằng 10 kΩ.</text>
+  <text class="small" x="90" y="1280">Không nối hai chân SD này chung nhau.</text>
+
+  <text class="tiny" x="1760" y="1465">Nguồn chân: nana_board_pins.h • 2026-08-05</text>
+</svg>

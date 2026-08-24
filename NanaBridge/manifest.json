@@ -1,0 +1,9 @@
+{
+  "Name": "NanaBridge",
+  "Author": "Ba and Nana",
+  "Version": "0.1.0",
+  "Description": "Read-only Stardew Valley state bridge for Nana.",
+  "UniqueID": "Nana.NanaBridge",
+  "EntryDll": "NanaBridge.dll",
+  "MinimumApiVersion": "4.5.2"
+}

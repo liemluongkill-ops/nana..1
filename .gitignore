@@ -1,0 +1,38 @@
+# Private Nana data
+MEMORY.md
+*MEMORY*.db
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.log
+*.env
+.env.*
+*.key
+*.pem
+*.pfx
+*.p12
+*token*
+*secret*
+*credential*
+
+# Private operations and history
+NANA_CURRENT_STATUS.md
+NANA_DAILY_CHECKPOINTS.md
+NANA_CHAT_HANDOFF_PROMPT.md
+NANA_TEST_PLAYBOOK.md
+NANA_COLLAB_STYLE.md
+AGENTS.md
+.agents/
+.cursor/
+
+# Build and local tooling
+bin/
+obj/
+__pycache__/
+*.pyc
+*.dll
+*.pdb
+.vs/
+.vscode/
+.idea/
