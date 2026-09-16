@@ -1,6 +1,39 @@
 # Nana Current Code Truth
 
-Last checked: 2026-08-12
+> Public export note (2026-09-16): this is a sanitized snapshot of accepted
+> canonical architecture, not a live deployment report. Private evidence
+> locations, active provider overrides, runtime logs, memory data, and pending
+> workstream state are intentionally excluded.
+
+## 2026-09-13 Memory v2 Phase 2 Code Truth
+
+The current bounded Phase 2 implementation is present behind existing
+ownership boundaries:
+
+- `runtime/controlled_memory_retrieval.py` owns bounded lexical retrieval
+  and the injected semantic adapter boundary. Semantic failure falls back
+  deterministically; public semantic scoring remains blocked by policy.
+- `runtime/memory_consolidation_phase2.py` is read-only preview only and never
+  mutates durable memory.
+- `runtime/public_cross_session_memory.py` accepts an explicit caller-supplied
+  snapshot and filters it by exact public scope, verified provenance, consent,
+  and retention without writing durable memory.
+- `brain/gpt.py` owns the integration boundary that selects the lane-owned
+  `public_long_term` collection and passes it as the snapshot, so public recall
+  never scans private `long_term`.
+- `runtime/memory_phase2_status.py` reports flags and read-only state.
+- `runtime/memory_grounding.py` retains the narrow, opt-in grounding boundary.
+
+All Phase 2 flags and the semantic provider default remain OFF/none. No
+runtime implementation file changed during the 2026-09-13 closeout; only
+Python 3.12 audit guards in two smoke files changed. This is bounded code
+truth, not a claim of semantic-provider quality or livestream readiness.
+
+Evidence packet: `<NANA_REPO>\nana\MEMORY_V2_PHASE2_FINAL_CLOSEOUT_20260913.md`
+
+
+Last checked: 2026-08-12 for the general runtime baseline; the 3D avatar
+section alone was refreshed from current code/build evidence on 2026-09-05.
 
 Purpose: this file is the current code-backed architecture truth. Use it before
 older wiki sections, phase history, or chat memory when deciding what Nana is
@@ -10,6 +43,34 @@ Architecture level: this is Level 3 Implementation truth. For the conceptual
 map, read `NANA_ARCHITECTURE_VISION.md` first. For system boundaries, read
 `NANA_ARCHITECTURE_CORE.md`. Do not use this file's long module/file lists as a
 Level 1 product model.
+
+## 2026-09-05 Nana 3D Avatar WebGL Implementation Truth
+
+Current accepted local path:
+
+```text
+<NANA_REPO>\nana\__main__.py
+  -> nana.runtime.avatar_intent_gateway (127.0.0.1:8766, semantic-only)
+  -> <NANA_AVATAR_WEB>\web Vite proxy /avatar-api
+  -> Unity WebGL NanaTargetDrivenAvatarController
+  -> baked Shinano humanoid
+```
+
+Editable avatar source remains under
+`<AVATAR_SOURCE>`. WebGL builds use the isolated copy at
+`<NANA_AVATAR_WEB>\unity`; do not apply its WebGL-only VRChat package metadata
+patch to the editable project by default.
+
+The accepted build performs NDMF/Modular Avatar processing before scene save,
+then rebinds Animator/Neck/Head/Body and strips platform-only behaviours.
+Evidence: `renderers=48->48`, `behaviours=141->1`; WebGL build succeeded at
+`91443162` bytes with zero errors and one warning. Core contract smokes are
+fresh `13/13 + 6/6 PASS`.
+
+Runtime truth is narrower than the gateway vocabulary: only `look` has a
+verified Unity WebGL mapping. The gateway defaults disabled and the Vite server
+is currently stopped. Read `NANA_3D_AVATAR_STATE.md` for the complete file map
+and limits.
 
 ## ESP32 / Presence Execution Hold
 

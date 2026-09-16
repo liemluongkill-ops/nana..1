@@ -1,6 +1,6 @@
 # Public Export Manifest
 
-Snapshot date: 2026-08-24
+Snapshot date: 2026-09-16
 
 ## Export Model
 
@@ -19,6 +19,7 @@ There is no automatic reverse synchronization from this repository into Nana.
 
 - `NANA_ARCHITECTURE_VISION.md`
 - `NANA_ARCHITECTURE_CORE.md`
+- `NANA_3D_AVATAR_STATE.md`
 - `NANA_CURRENT_CODE_TRUTH.md`
 - `NANA_RUNTIME_REWIRE_STATE.md`
 - `NANA_AUTONOMY_DESIGN.md`
@@ -52,3 +53,32 @@ Generated `bin/` and `obj/` files are excluded.
 
 The public repository must continue to be produced from an allowlist. Do not
 replace this process with "copy everything and delete obvious secrets."
+
+## Sanitization Placeholders
+
+The export replaces private operational locations and identifiers with stable
+placeholders, including:
+
+- `<NANA_REPO>`
+- `<NANA_CANONICAL_WIKI>`
+- `<NANA_AVATAR_WEB>`
+- `<NANA_ANIMATION_LAB>`
+- `<AVATAR_SOURCE>`
+- `<STARDEW_GAME>`
+- `<RESEARCH_REPOS>`
+- `<ESP_IDF>`
+- `<USER_HOME>`
+- `<LOCAL_IP>`
+- `<DEVICE_MAC>`
+
+Loopback addresses may remain because they identify no external host.
+
+## 2026-09-16 Scope
+
+- Added the accepted local 3D avatar WebGL V1 architecture document.
+- Refreshed allowlisted architecture and capability documents from canonical
+  accepted state, including the bounded Memory v2 Phase 2 boundary.
+- Kept live Stream workstream notes, model-route overrides, private evidence,
+  memory records, handoffs, daily status, tests, and runtime logs excluded.
+- Preserved the previously sanitized NanaBridge source; no private game install
+  path was reintroduced.

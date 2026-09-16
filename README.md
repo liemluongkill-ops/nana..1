@@ -4,6 +4,10 @@ This repository is a sanitized, public review snapshot of the Nana project.
 Nana is a companion-first AI system with optional presence, communication,
 streaming, and game capabilities.
 
+Current public snapshot: **2026-09-16**. It reflects accepted architecture and
+bounded implementation evidence through Memory v2 Phase 2 and the local 3D
+avatar WebGL V1 baseline. It does not expose or mirror Nana's live runtime.
+
 ## Purpose
 
 - Make Nana's architecture and design direction available for technical review.
@@ -18,7 +22,8 @@ configuration. Changes made here do not flow back into Nana automatically.
 1. `NANA_ARCHITECTURE_VISION.md` - high-level conceptual model.
 2. `NANA_ARCHITECTURE_CORE.md` - major systems and boundaries.
 3. `NANA_CURRENT_CODE_TRUTH.md` - implementation-level snapshot.
-4. Capability documents - autonomy, Discord, Presence, Stardew, singing, and
+4. `NANA_3D_AVATAR_STATE.md` - bounded Unity WebGL avatar architecture.
+5. Capability documents - autonomy, Discord, Presence, Stardew, singing, and
    bridge design.
 
 ## Included
@@ -26,6 +31,7 @@ configuration. Changes made here do not flow back into Nana automatically.
 - Architecture and implementation design documents.
 - Data-flow and hardware wiring material.
 - Capability boundaries and frozen-game design notes.
+- Bounded Memory v2 Phase 2 and 3D avatar architecture notes.
 - Sanitized NanaBridge source files for technical review.
 
 ## Intentionally Excluded

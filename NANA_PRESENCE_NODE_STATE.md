@@ -1,13 +1,41 @@
 # Nana Presence Node State
 
-Last updated: 2026-08-12 (wiki reconciliation; evidence through 2026-08-06)
+Last updated: 2026-08-29 (read-only surface audit; physical evidence unchanged)
 
-> **ESP32-OWNER-HOLD-1 = `WAITING_OWNER` / `DEFERRED` (2026-08-12).**
+> **ESP32-OWNER-HOLD-1 = `WAITING_OWNER` / `DEFERRED` (physical execution).**
 > This is a scheduling hold, not `FROZEN` and not closed. Do not flash,
-> provision, wire, power-cycle, capture camera frames, use the microphone or
-> speaker, exercise the display, run live stress, or optimize Presence until
-> Ba explicitly reopens the scope and gives a fresh confirmation. All PASS and
-> PENDING evidence below remains valid and preserved.
+> provision, wire, power-cycle, capture camera frames, use the physical
+> microphone or speaker, exercise the display, run live stress, or change
+> Presence hardware until Ba explicitly reopens that physical scope. All prior
+> PASS and PENDING evidence remains valid and preserved.
+
+## 2026-08-29 Owner-Authorized Read-Only Surface Audit
+
+Ba explicitly reopened only a source/config surface audit before Core LLM
+latency work. This did not reopen physical Presence execution.
+
+Audit result:
+
+- Current firmware selector remains `NANA_BRINGUP_PRESENCE_SESSION`.
+- The latest firmware binary is about `1,146,448` bytes and was built after
+  the latest Session audio source change.
+- N16R8 configuration remains 16 MiB flash plus 8 MiB octal PSRAM at 40 MHz.
+- PSRAM uses capability allocation rather than global malloc.
+- Camera keeps one 192 KiB VGA JPEG framebuffer in PSRAM; direct camera PSRAM
+  DMA remains disabled because it previously produced incomplete JPEGs.
+- Large microphone capture and bounded playback buffers use PSRAM.
+  I2S rings, camera staging DMA, and display transfer buffers remain in
+  internal/DMA-capable RAM.
+- Canonical audio GPIOs remain BCLK 41, WS 42, DOUT 47, DIN 21, amplifier SD 2.
+  They do not overlap the camera bus.
+- Temporary ST7789 wiring deliberately borrows microSD GPIO 38/39/40, so
+  display and microSD are not simultaneous under that bench mapping.
+- No new source fault or RAM/pin conflict was found. No RAM optimization,
+  firmware edit, build, flash, serial operation, network call, or peripheral
+  action was required by this audit.
+
+Physical status and fixed gate count remain unchanged. Core LLM latency work
+does not advance B6, D4, display replacement, Opus, or soak acceptance.
 
 Status: **THE AUTHENTICATED WEBSOCKET SESSION IS THE ONLY PRODUCTION DEVICE
 PATH. CONTROL, BOUNDED HALF-DUPLEX PCM16/16 KHZ AUDIO, BOUNDED DISPLAY
@@ -566,7 +594,7 @@ Do not add any of the following before stationary V1 acceptance:
 ## Build And Verification Anchors
 
 ```powershell
-& 'C:\esp\v5.5.5\esp-idf\export.ps1'
+& '<ESP_IDF>\export.ps1'
 Set-Location '<NANA_REPO>\nana_presence_node'
 idf.py build
 idf.py -p COM14 flash

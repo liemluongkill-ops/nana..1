@@ -6,6 +6,10 @@ MEMORY.md
 *.sqlite
 *.sqlite3
 *.log
+*.jsonl
+*.zip
+*.bak
+*.backup
 *.env
 .env.*
 *.key
@@ -30,6 +34,9 @@ AGENTS.md
 bin/
 obj/
 __pycache__/
+.pytest_cache/
+runtime_logs/
+data/
 *.pyc
 *.dll
 *.pdb

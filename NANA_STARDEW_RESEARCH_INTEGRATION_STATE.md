@@ -30,16 +30,16 @@ User muốn Nana trong Stardew hoạt động theo hướng đơn giản hơn:
 User đã tải các repo nghiên cứu vào:
 
 ```text
-D:/bot/research/stardew/
+<RESEARCH_REPOS>/stardew/
 ```
 
 Các thư mục hiện có:
 
 ```text
-D:/bot/research/stardew/stardew-valley-bot-framework-main
-D:/bot/research/stardew/stardew-valley-water-bot-main
-D:/bot/research/stardew/stardew-mcp-main
-D:/bot/research/stardew/Farmtronics-main
+<RESEARCH_REPOS>/stardew/stardew-valley-bot-framework-main
+<RESEARCH_REPOS>/stardew/stardew-valley-water-bot-main
+<RESEARCH_REPOS>/stardew/stardew-mcp-main
+<RESEARCH_REPOS>/stardew/Farmtronics-main
 ```
 
 Các repo này cần được mổ xẻ read-only trước. Không copy code bừa, không lắp vào

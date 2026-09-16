@@ -21,6 +21,31 @@ Level 3 - Implementation:
 This file is Level 2. It should explain system boundaries, not make every
 implementation file look like a peer of Nana's identity.
 
+## 2026-09-05 3D Avatar Runtime Boundary
+
+The accepted local V1 is a Unity WebGL output capability, not a new Nana mind
+or autonomy owner:
+
+```text
+Nana semantic intent
+  -> loopback AvatarIntentGateway
+  -> browser same-origin proxy
+  -> Unity WebGL avatar runtime
+  -> assembled model pose
+```
+
+Core owns intent and policy. The gateway owns validation, bounds, arbitration,
+and transport. Unity owns actual pose, blending/interpolation, eyes, blink,
+and interruption. The web host owns presentation only. Nana must not emit raw
+bones or per-frame controls.
+
+The final V1 runtime is Unity WebGL, not Warudo. Warudo remains an optional
+unverified adapter. NDMF/Modular Avatar is a build-time assembly step and must
+not become a runtime dependency in the browser. The gateway remains disabled
+by default, auto event mapping remains off, and only `look` is verified end to
+end. Read `NANA_3D_AVATAR_STATE.md` for Level 3 paths, evidence, limits, and
+reopen procedure.
+
 ## 2026-08-12 Reconciliation Snapshot
 
 The current Level 3 runtime facts used by this architecture document are:

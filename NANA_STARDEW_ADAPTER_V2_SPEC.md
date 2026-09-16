@@ -496,7 +496,7 @@ This spec IS the lock. Update it before you grow.
 
 ## 5a. NanaBridge SMAPI Writer (Phase 5)
 
-**Location:** `<NANA_REPO>/NanaBridge/ModEntry.cs` (1600+ lines, already installed at `$(StardewGamePath)\Mods\NanaBridge`)
+**Location:** `<NANA_REPO>/NanaBridge/ModEntry.cs` (1600+ lines, already installed at `<STARDEW_GAME>\Mods\NanaBridge`)
 
 **What it does:**
 - Read-only telemetry from Stardew Valley via SMAPI.
