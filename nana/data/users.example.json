@@ -1,0 +1,14 @@
+{
+  "owner": {
+    "name": "Ba",
+    "full_name": "",
+    "role": "ba",
+    "pronoun": "ba",
+    "aliases": [
+      "ba",
+      "bố"
+    ],
+    "tier": "owner",
+    "is_default": true
+  }
+}

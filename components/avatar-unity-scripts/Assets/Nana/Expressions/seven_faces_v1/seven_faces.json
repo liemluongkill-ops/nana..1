@@ -1,0 +1,141 @@
+{
+  "id": "seven_faces_v1",
+  "version": "0.1.0",
+  "presets": [
+    {
+      "id": "wink_soft_smile",
+      "version": "0.1.0",
+      "action": "wink_soft_smile",
+      "enter": 0.55,
+      "exit": 0.65,
+      "duration": 2.2,
+      "ownsHead": true,
+      "head": { "x": -1.0, "y": 0.0, "z": 3.0 },
+      "channels": [
+        { "shape": "eye_joy_L", "weight": 95, "delay": 0.08 },
+        { "shape": "eye_zitome1_R", "weight": 8, "delay": 0.04 },
+        { "shape": "eyebrow_joy_L", "weight": 15, "delay": 0.02 },
+        { "shape": "eyebrow_joy_R", "weight": 8, "delay": 0.02 },
+        { "shape": "mouth_smile", "weight": 24, "delay": 0.10 },
+        { "shape": "other_cheek_1", "weight": 16, "delay": 0.18 }
+      ]
+    },
+    {
+      "id": "heart_happy",
+      "version": "0.1.0",
+      "action": "heart_happy",
+      "enter": 0.72,
+      "exit": 0.80,
+      "duration": 2.52,
+      "ownsHead": false,
+      "head": { "x": 0.0, "y": 0.0, "z": 0.0 },
+      "channels": [
+        { "shape": "eye_heart_big", "weight": 96, "delay": 0.12 },
+        { "shape": "eye_happy", "weight": 28, "delay": 0.04 },
+        { "shape": "eye_pleasure", "weight": 14, "delay": 0.06 },
+        { "shape": "eyebrow_sad1", "weight": 25, "delay": 0.02 },
+        { "shape": "mouth_smile", "weight": 40, "delay": 0.10 },
+        { "shape": "mouth_e2", "weight": 30, "delay": 0.14 },
+        { "shape": "mouth_position_up", "weight": 10, "delay": 0.14 },
+        { "shape": "other_cheek_1", "weight": 45, "delay": 0.18 }
+      ]
+    },
+    {
+      "id": "surprised_pout",
+      "version": "0.1.0",
+      "action": "surprised_pout",
+      "enter": 0.34,
+      "exit": 0.58,
+      "duration": 1.92,
+      "ownsHead": false,
+      "head": { "x": 0.0, "y": 0.0, "z": 0.0 },
+      "channels": [
+        { "shape": "eye_surprise", "weight": 55, "delay": 0.02 },
+        { "shape": "eyebrow_surprised", "weight": 55, "delay": 0.00 },
+        { "shape": "mouth_u1", "weight": 52, "delay": 0.18 },
+        { "shape": "mouth_position_up", "weight": 18, "delay": 0.18 },
+        { "shape": "other_cheek_1", "weight": 18, "delay": 0.22 }
+      ]
+    },
+    {
+      "id": "serious_think",
+      "version": "0.1.0",
+      "action": "serious_think",
+      "enter": 0.70,
+      "exit": 0.85,
+      "duration": 2.55,
+      "ownsHead": true,
+      "head": { "x": 2.0, "y": 4.0, "z": -2.5 },
+      "channels": [
+        { "shape": "eye_zitome1", "weight": 18, "delay": 0.04 },
+        { "shape": "eye_zitome2", "weight": 30, "delay": 0.04 },
+        { "shape": "eyebrow_straight", "weight": 36, "delay": 0.00 },
+        { "shape": "eyebrow_down", "weight": 8, "delay": 0.00 },
+        { "shape": "mouth_straight", "weight": 20, "delay": 0.12 },
+        { "shape": "other_cheek_1", "weight": 10, "delay": 0.16 }
+      ]
+    },
+    {
+      "id": "cat_teary_smile",
+      "version": "0.1.0",
+      "action": "cat_teary_smile",
+      "enter": 0.85,
+      "exit": 0.90,
+      "duration": 2.75,
+      "ownsHead": true,
+      "head": { "x": 5.0, "y": -7.0, "z": 4.0 },
+      "channels": [
+        { "shape": "eye_uruuru", "weight": 75, "delay": 0.04 },
+        { "shape": "eye_sleepy", "weight": 22, "delay": 0.06 },
+        { "shape": "eye_sad", "weight": 14, "delay": 0.06 },
+        { "shape": "eyebrow_angry2", "weight": 30, "delay": 0.00 },
+        { "shape": "eyebrow_sad2", "weight": 15, "delay": 0.00 },
+        { "shape": "mouth_\u03c9", "weight": 72, "delay": 0.12 },
+        { "shape": "mouth_position_up", "weight": 55, "delay": 0.12 },
+        { "shape": "other_cheek_1", "weight": 35, "delay": 0.16 },
+        { "shape": "other_tear_1", "weight": 55, "delay": 0.32 }
+      ]
+    },
+    {
+      "id": "shy_crying",
+      "version": "0.1.0",
+      "action": "shy_crying",
+      "enter": 0.88,
+      "exit": 0.92,
+      "duration": 2.8,
+      "ownsHead": true,
+      "head": { "x": 4.0, "y": -5.0, "z": 7.0 },
+      "channels": [
+        { "shape": "eye_sad", "weight": 28, "delay": 0.04 },
+        { "shape": "eye_sleepy", "weight": 28, "delay": 0.06 },
+        { "shape": "eyebrow_sad2", "weight": 50, "delay": 0.00 },
+        { "shape": "eyelid_under_up2", "weight": 18, "delay": 0.08 },
+        { "shape": "mouth_u1", "weight": 34, "delay": 0.14 },
+        { "shape": "mouth_sad", "weight": 18, "delay": 0.12 },
+        { "shape": "other_cheek_2", "weight": 45, "delay": 0.18 },
+        { "shape": "other_tear_1", "weight": 75, "delay": 0.28 },
+        { "shape": "other_tear_2", "weight": 50, "delay": 0.34 },
+        { "shape": "other_tear_3", "weight": 30, "delay": 0.40 }
+      ]
+    },
+    {
+      "id": "playful_wink",
+      "version": "0.1.0",
+      "action": "playful_wink",
+      "enter": 0.56,
+      "exit": 0.70,
+      "duration": 2.26,
+      "ownsHead": true,
+      "head": { "x": -2.0, "y": 5.0, "z": -8.0 },
+      "channels": [
+        { "shape": "eye_joy_R", "weight": 98, "delay": 0.08 },
+        { "shape": "eye_pleasure_L", "weight": 14, "delay": 0.04 },
+        { "shape": "eye_angry_L", "weight": 22, "delay": 0.04 },
+        { "shape": "eyebrow_joy", "weight": 22, "delay": 0.02 },
+        { "shape": "mouth_smile", "weight": 18, "delay": 0.10 },
+        { "shape": "mouth_V", "weight": 24, "delay": 0.12 },
+        { "shape": "other_cheek_1", "weight": 20, "delay": 0.18 }
+      ]
+    }
+  ]
+}

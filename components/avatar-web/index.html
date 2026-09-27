@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#111417" />
+    <link rel="icon" href="data:," />
+    <title>Nana Avatar</title>
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div class="identity" aria-label="Nana Avatar">
+          <span class="mark">N</span>
+          <div>
+            <strong>Nana</strong>
+            <span>Avatar runtime</span>
+          </div>
+        </div>
+
+        <div class="runtime-state" aria-live="polite">
+          <span id="renderer-state" class="state-chip pending">
+            <i data-lucide="activity"></i>
+            <span>Đang nạp</span>
+          </span>
+          <span id="gateway-state" class="state-chip pending">
+            <i data-lucide="wifi"></i>
+            <span>Gateway</span>
+          </span>
+        </div>
+
+        <div class="top-actions">
+          <button id="model-button" class="icon-button" type="button" title="Đổi model" aria-label="Đổi model" disabled>
+            <i data-lucide="shirt"></i>
+          </button>
+          <button id="events-button" class="icon-button" type="button" title="Động tác" aria-label="Động tác" aria-expanded="false">
+            <i data-lucide="smile"></i>
+          </button>
+          <button id="settings-button" class="icon-button" type="button" title="Điều chỉnh" aria-label="Điều chỉnh" aria-expanded="false">
+            <i data-lucide="sliders-horizontal"></i>
+          </button>
+          <button id="fullscreen-button" class="icon-button" type="button" title="Toàn màn hình" aria-label="Toàn màn hình">
+            <i data-lucide="maximize-2"></i>
+          </button>
+        </div>
+      </header>
+
+      <main id="stage" class="stage">
+        <canvas id="unity-canvas" tabindex="-1" aria-label="Nana 3D avatar"></canvas>
+
+        <div id="loading" class="loading-layer" role="status" aria-live="polite">
+          <div class="loading-brand">N</div>
+          <div class="loading-copy">
+            <strong id="loading-label">Đang nạp avatar</strong>
+            <span id="loading-detail">0%</span>
+          </div>
+          <div class="progress-track"><span id="progress-bar"></span></div>
+        </div>
+
+        <div id="error-layer" class="error-layer" hidden>
+          <i data-lucide="circle-alert"></i>
+          <strong>Không thể nạp avatar</strong>
+          <span id="error-message"></span>
+          <button id="retry-button" class="command-button" type="button">
+            <i data-lucide="rotate-cw"></i>
+            Thử lại
+          </button>
+        </div>
+
+        <aside id="settings-panel" class="settings-panel" aria-label="Điều chỉnh avatar" hidden>
+          <div class="panel-heading">
+            <div>
+              <strong>Điều chỉnh</strong>
+              <span id="control-source">Local preview</span>
+            </div>
+            <button id="close-settings" class="icon-button" type="button" title="Đóng" aria-label="Đóng">
+              <i data-lucide="x"></i>
+            </button>
+          </div>
+
+          <section class="settings-section" aria-labelledby="model-settings-label">
+            <label id="model-settings-label" class="section-heading" for="model-select">
+              <i data-lucide="shirt"></i>
+              <span>Model</span>
+            </label>
+            <select id="model-select" class="model-select" disabled>
+              <option value="1">Model 1 · Angel Soda</option>
+              <option value="2">Model 2 · Off White</option>
+            </select>
+          </section>
+
+          <section class="settings-section" aria-labelledby="camera-settings-label">
+            <div id="camera-settings-label" class="section-heading">
+              <i data-lucide="camera"></i>
+              <span>Khung hình</span>
+            </div>
+            <div class="camera-presets" role="group" aria-label="Cỡ khung hình">
+              <button type="button" data-camera-preset="portrait" class="preset-button active">
+                <i data-lucide="scan-face"></i>
+                <span>Cận</span>
+              </button>
+              <button type="button" data-camera-preset="waist" class="preset-button">
+                <i data-lucide="frame"></i>
+                <span>Nửa người</span>
+              </button>
+              <button type="button" data-camera-preset="full" class="preset-button">
+                <i data-lucide="person-standing"></i>
+                <span>Toàn thân</span>
+              </button>
+            </div>
+
+            <label class="range-row" for="camera-zoom">
+              <span><i data-lucide="zoom-in"></i> Thu phóng</span>
+              <output id="camera-zoom-value">28%</output>
+              <input id="camera-zoom" type="range" min="0" max="1" step="0.01" value="0.28" />
+            </label>
+            <label class="range-row" for="camera-height">
+              <span><i data-lucide="move-vertical"></i> Trượt dọc</span>
+              <output id="camera-height-value">88%</output>
+              <input id="camera-height" type="range" min="0.05" max="0.95" step="0.01" value="0.88" />
+            </label>
+            <label class="range-row" for="camera-yaw">
+              <span><i data-lucide="rotate-3d"></i> Góc ngang</span>
+              <output id="camera-yaw-value">0°</output>
+              <input id="camera-yaw" type="range" min="-180" max="180" step="1" value="0" />
+            </label>
+            <label class="range-row" for="camera-pitch">
+              <span><i data-lucide="move-vertical"></i> Góc cao</span>
+              <output id="camera-pitch-value">0°</output>
+              <input id="camera-pitch" type="range" min="-15" max="15" step="1" value="0" />
+            </label>
+          </section>
+
+          <section class="settings-section" aria-labelledby="motion-settings-label">
+            <div id="motion-settings-label" class="section-heading">
+              <i data-lucide="activity"></i>
+              <span>Chuyển động</span>
+            </div>
+            <label class="toggle-row">
+              <span><i data-lucide="scan-face"></i> Idle tự nhiên</span>
+              <input id="idle-toggle" type="checkbox" checked />
+            </label>
+            <label class="toggle-row">
+              <span><i data-lucide="eye"></i> Chớp mắt</span>
+              <input id="blink-toggle" type="checkbox" checked />
+            </label>
+
+            <label class="range-row" for="move-speed">
+              <span>Thời gian quay</span>
+              <output id="move-speed-value">0.80s</output>
+              <input id="move-speed" type="range" min="0.3" max="1.5" step="0.05" value="0.8" />
+            </label>
+            <label class="range-row" for="idle-yaw">
+              <span>Biên độ idle</span>
+              <output id="idle-yaw-value">8°</output>
+              <input id="idle-yaw" type="range" min="0" max="15" step="1" value="8" />
+            </label>
+            <label class="range-row" for="eye-lead">
+              <span>Độ dẫn của mắt</span>
+              <output id="eye-lead-value">0.55</output>
+              <input id="eye-lead" type="range" min="0.2" max="1.2" step="0.05" value="0.55" />
+            </label>
+          </section>
+
+          <section class="settings-section" aria-labelledby="mouth-settings-label">
+            <div id="mouth-settings-label" class="section-heading">
+              <i data-lucide="mic-2"></i>
+              <span>Miệng</span>
+            </div>
+            <label class="range-row" for="mouth-test">
+              <span><i data-lucide="mic-2"></i> Mở miệng thử</span>
+              <output id="mouth-test-value">0%</output>
+              <input id="mouth-test" type="range" min="0" max="40" step="1" value="0" />
+            </label>
+          </section>
+        </aside>
+        <aside id="events-panel" class="settings-panel events-panel" aria-label="Động tác Nana" hidden>
+          <div class="panel-heading">
+            <div><strong>Động tác</strong><span id="event-phase" aria-live="polite">Idle</span></div>
+            <button id="close-events" class="icon-button" title="Đóng động tác" aria-label="Đóng động tác"><i data-lucide="x"></i></button>
+          </div>
+          <div class="event-camera-tools" role="group" aria-label="Khung xem động tác">
+            <button type="button" class="icon-button" data-camera-preset="portrait" title="Cận mặt" aria-label="Cận mặt"><i data-lucide="scan-face"></i></button>
+            <button type="button" class="icon-button" data-camera-preset="waist" title="Nửa người" aria-label="Nửa người"><i data-lucide="frame"></i></button>
+            <button type="button" class="icon-button" data-camera-preset="full" title="Toàn thân" aria-label="Toàn thân"><i data-lucide="person-standing"></i></button>
+          </div>
+          <div class="section-heading"><i data-lucide="smile"></i><span>Biểu cảm</span></div>
+          <div id="expression-list" class="event-list" role="group" aria-label="Chọn biểu cảm"></div>
+          <div class="section-heading"><i data-lucide="hand"></i><span>Động tác</span></div>
+          <div id="event-list" class="event-list" role="group" aria-label="Chọn động tác"></div>
+          <button id="settle-event" class="command-button" type="button" disabled><i data-lucide="rotate-ccw"></i> Về idle</button>
+        </aside>
+      </main>
+
+      <footer class="control-dock" aria-label="Điều khiển hướng nhìn">
+        <div class="look-controls">
+          <button class="look-button" type="button" data-look="left" title="Nhìn trái" aria-label="Nhìn trái" disabled>
+            <i data-lucide="chevron-left"></i>
+          </button>
+          <button class="look-button center" type="button" data-look="center" title="Nhìn giữa" aria-label="Nhìn giữa" disabled>
+            <i data-lucide="circle-dot"></i>
+          </button>
+          <button class="look-button" type="button" data-look="right" title="Nhìn phải" aria-label="Nhìn phải" disabled>
+            <i data-lucide="chevron-right"></i>
+          </button>
+        </div>
+        <div class="last-command">
+          <span id="command-indicator"></span>
+          <span id="last-command">Sẵn sàng</span>
+        </div>
+      </footer>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

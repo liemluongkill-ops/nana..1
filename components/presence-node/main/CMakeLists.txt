@@ -1,0 +1,35 @@
+idf_component_register(
+    SRCS
+        "app_main.c"
+        "nana_camera.c"
+        "nana_camera_http.c"
+        "nana_display.c"
+        "nana_microphone_vad.c"
+        "nana_presence_session.c"
+        "nana_session_audio.c"
+        "nana_session_camera.c"
+        "nana_session_uplink.c"
+        "nana_speaker.c"
+        "nana_wifi.c"
+    INCLUDE_DIRS "."
+    REQUIRES
+        esp_driver_gpio
+        esp_driver_i2s
+        esp_driver_sdmmc
+        esp_driver_uart
+        esp_event
+        esp_app_format
+        esp_http_server
+        esp_lcd
+        esp_netif
+        esp_psram
+        esp_timer
+        esp_wifi
+        espressif__esp_websocket_client
+        fatfs
+        json
+        mbedtls
+        nvs_flash
+        spi_flash
+    EMBED_FILES "assets/nana_voice_test.pcm"
+)

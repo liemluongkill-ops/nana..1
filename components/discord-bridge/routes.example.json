@@ -1,0 +1,18 @@
+{
+  "guilds": {
+    "SERVER_ID_HERE": {
+      "name": "nana chat",
+      "chat_channel_ids": [
+        "TEXT_CHAT_CHANNEL_ID_HERE"
+      ],
+      "media_channel_ids": [
+        "IMAGE_OR_MEDIA_CHANNEL_ID_HERE"
+      ],
+      "default_voice_channel_id": "VOICE_CHANNEL_ID_HERE",
+      "voice_by_text_channel": {
+        "TEXT_CHAT_CHANNEL_ID_HERE": "VOICE_CHANNEL_ID_HERE",
+        "IMAGE_OR_MEDIA_CHANNEL_ID_HERE": "VOICE_CHANNEL_ID_HERE"
+      }
+    }
+  }
+}

@@ -1,26 +1,24 @@
-# Private Nana data
-MEMORY.md
-*MEMORY*.db
-*.db
-*.db-*
-*.sqlite
-*.sqlite3
-*.log
-*.jsonl
-*.zip
-*.bak
-*.backup
-*.env
+# Local credentials. Templates remain publishable.
+.env
 .env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
 *.key
 *.pem
 *.pfx
 *.p12
-*token*
-*secret*
-*credential*
+**/credentials.json
+**/token.json
+**/*_token.json
+**/client_secret*.json
 
-# Private operations and history
+# Private Nana state and operator material.
+MEMORY.md
+memory.json
+memory.json.*
+chat_history.txt
 NANA_CURRENT_STATUS.md
 NANA_DAILY_CHECKPOINTS.md
 NANA_CHAT_HANDOFF_PROMPT.md
@@ -29,17 +27,57 @@ NANA_COLLAB_STYLE.md
 AGENTS.md
 .agents/
 .cursor/
+nana/data/**
+!nana/data/*.example.json
+nana/runtime/data/
+nana/game/*/data/
+runtime_logs/
+logs/
+captures/
 
-# Build and local tooling
+# Python caches and local environments.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+.coverage
+htmlcov/
+
+# Generated builds and downloaded dependencies.
 bin/
 obj/
-__pycache__/
-.pytest_cache/
-runtime_logs/
-data/
-*.pyc
+node_modules/
+dist/
+.vite/
+build/
+Build/
+Builds/
+Library/
+Temp/
+Logs/
+UserSettings/
+managed_components/
+components/presence-node/sdkconfig
+components/presence-node/sdkconfig.old
+components/presence-node/.local/
+components/presence-node/output/
+components/avatar-web/output/
 *.dll
 *.pdb
+*.onnx
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+
+# Logs, archives, backups, and editor state.
+*.log
+*.zip
+*.bak
+*.backup
 .vs/
 .vscode/
 .idea/

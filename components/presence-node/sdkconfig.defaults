@@ -1,0 +1,30 @@
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_40M=y
+# Keep room for the Wi-Fi session and future framed media in one image.
+CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
+# N16R8 carries 8 MiB octal PSRAM. Expose it through ESP-IDF's capability
+# allocator for future bounded media buffers; Session V1 control does not need it.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_TYPE_ESPPSRAM64=y
+CONFIG_SPIRAM_SPEED_40M=y
+CONFIG_SPIRAM_BOOT_INIT=y
+CONFIG_SPIRAM_PRE_CONFIGURE_MEMORY_PROTECTION=y
+# CONFIG_SPIRAM_USE_MEMMAP is not set
+CONFIG_SPIRAM_USE_CAPS_ALLOC=y
+# CONFIG_SPIRAM_USE_MALLOC is not set
+# CONFIG_SPIRAM_ALLOW_NOINIT_SEG_EXTERNAL_MEMORY is not set
+# CONFIG_SPIRAM_MEMTEST is not set
+# Keep DMA staging in internal memory and place only the complete framebuffer in
+# PSRAM. Direct PSRAM DMA produced incomplete JPEGs on this N16R8/OV5640 board.
+# CONFIG_CAMERA_PSRAM_DMA is not set
+# Match the bounded Presence camera transport instead of the driver's VGA/5
+# estimate, which can truncate detailed OV5640 JPEG frames before their EOI.
+CONFIG_CAMERA_JPEG_MODE_FRAME_SIZE_CUSTOM=y
+CONFIG_CAMERA_JPEG_MODE_FRAME_SIZE=196608
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+CONFIG_ESP_CONSOLE_UART_BAUDRATE=115200
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+# Limit the initial PHY calibration/startup peak before runtime Wi-Fi settings apply.
+CONFIG_ESP_PHY_MAX_WIFI_TX_POWER=10

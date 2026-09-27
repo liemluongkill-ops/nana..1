@@ -1,0 +1,2 @@
+"""nana.utils — stub package."""
+from __future__ import annotations
