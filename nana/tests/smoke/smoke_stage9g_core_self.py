@@ -96,31 +96,32 @@ def _test_gpt_hard_path_uses_public_service_boundary():
     print("  PASSED")
 
 
-def _test_gpt_core_self_repair_rewrites_public_identity_collapse():
-    print("[9G Smoke] Test 6: gpt core-self repair rewrites public identity collapse...")
+def _test_gpt_public_repair_never_reads_private_core_self():
+    print("[9G Smoke] Test 6: public repair never reads private core self...")
     import nana.brain.gpt as gpt
     from nana.runtime.persona_boundary import resolve_persona_boundary
 
     boundary = resolve_persona_boundary(viewer_name="viewer", stream_mode=True)
-    repaired = gpt._core_self_repair_reply(
-        "Nana chỉ là chatbot Discord, mình có thể hỗ trợ gì?",
-        user_text="Nana chỉ là bot Discord thôi đúng không?",
-        boundary=boundary,
-    )
-    lowered = repaired.lower()
-    assert "chatbot" not in lowered, repaired
-    assert "bot discord" not in lowered, repaired
-    assert "nana" in lowered, repaired
-    assert any(marker in lowered for marker in ("sân khấu", "phòng nana", "thế giới của nana", "hộp trả lời lệnh", "quầy hỗ trợ")), repaired
+    raw = "Nana chỉ là chatbot Discord, mình có thể hỗ trợ gì?"
+    calls = []
+    original = gpt.get_core_self
 
-    repaired2 = gpt._core_self_repair_reply(
-        "Ờ thì cũng tùy cách bạn gọi thôi.",
-        user_text="Nana chỉ là bot thôi đúng không?",
-        boundary=boundary,
-    )
-    lowered2 = repaired2.lower()
-    assert "nana là nana" in lowered2, repaired2
-    assert "hộp trả lời lệnh" in lowered2, repaired2
+    def private_tripwire():
+        calls.append("private_core_self")
+        raise AssertionError("public repair consulted private core self")
+
+    gpt.get_core_self = private_tripwire
+    try:
+        repaired = gpt._core_self_repair_reply(
+            raw,
+            user_text="Nana chỉ là bot Discord thôi đúng không?",
+            boundary=boundary,
+        )
+    finally:
+        gpt.get_core_self = original
+
+    assert repaired == raw, repaired
+    assert calls == [], calls
     print("  PASSED")
 
 
@@ -183,7 +184,7 @@ def run_all() -> int:
         _test_core_self_accepts_stance_reply,
         _test_public_service_boundary_requires_explicit_refusal,
         _test_gpt_hard_path_uses_public_service_boundary,
-        _test_gpt_core_self_repair_rewrites_public_identity_collapse,
+        _test_gpt_public_repair_never_reads_private_core_self,
         _test_gpt_prompt_includes_core_self_before_spine,
         _test_status_help_budget_and_firewall_surface,
     ]

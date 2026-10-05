@@ -6,6 +6,7 @@ from __future__ import annotations
 
 LIVE_SLASH_COMMANDS: set[str] = {
     '/interaction-latency-status',
+    '/llm-provider',
     '/latency-status',
     '/llm-voice-latency',
     '/action-cancel',
@@ -51,6 +52,7 @@ LIVE_SLASH_COMMANDS: set[str] = {
     '/browser',
     '/browser-refresh',
     '/browser-refresh-deep',
+    '/web',
     '/cancel',
     '/chill-mode',
     '/chillmode',

@@ -22,13 +22,27 @@ public static class NanaWebBuild
 
     public static void BuildWebGL()
     {
+        BuildPlayerFromRuntime(prepareRuntimeScene: true);
+    }
+
+    // Recompile runtime-only fixes without rebaking accepted models/materials/hair.
+    public static void RebuildRuntimeWebGL()
+    {
+        BuildPlayerFromRuntime(prepareRuntimeScene: false);
+    }
+
+    private static void BuildPlayerFromRuntime(bool prepareRuntimeScene)
+    {
         try
         {
             ConfigurePlayer();
             if (UseLilToon && SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null)
                 throw new InvalidOperationException(
                     "Fidelity builds need a graphics device for skybox lighting. Omit -nographics and use -force-d3d11.");
-            PrepareRuntimeScene();
+            if (prepareRuntimeScene)
+                PrepareRuntimeScene();
+            else if (!File.Exists(RuntimeScene))
+                throw new FileNotFoundException("Saved runtime scene is required", RuntimeScene);
 
             string output = Environment.GetEnvironmentVariable("NANA_WEBGL_OUTPUT");
             if (string.IsNullOrWhiteSpace(output))

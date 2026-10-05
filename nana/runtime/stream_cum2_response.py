@@ -9,6 +9,7 @@ playback, avatar, OBS, YouTube output, or any other sink.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+import hashlib
 import math
 import os
 from typing import Any, Callable
@@ -32,6 +33,7 @@ CUM2_MODEL_ROUTE = "nana-public"
 CUM2_DETERMINISTIC_ROUTE = "nana-public-deterministic"
 CUM2_MAX_RESPONSE_CHARS = 1200
 PublicModelCaller = Callable[..., tuple[str | None, str]]
+CompiledPublicModelCaller = Callable[..., tuple[str | None, str, Any]]
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -47,6 +49,22 @@ def _default_public_model_caller(**kwargs) -> tuple[str | None, str]:
     from nana.brain.llmgate_client import call_llmgate_messages
 
     return call_llmgate_messages(**kwargs)
+
+
+def _default_compiled_public_model_caller(
+    compiled: Any,
+    **kwargs: Any,
+) -> tuple[str | None, str, Any]:
+    from nana.brain.llmgate_client import call_llmgate_compiled
+
+    return call_llmgate_compiled(compiled, **kwargs)
+
+
+def _context_cum2_mode() -> str:
+    mode = str(os.getenv("NANA_CONTEXT_CUM2_MODE", "legacy") or "").strip().lower()
+    if mode not in {"legacy", "shadow", "canonical"}:
+        raise ValueError("invalid_context_mode")
+    return mode
 
 
 def _canonical_id(value: Any) -> str | None:
@@ -180,9 +198,13 @@ class PublicResponseGenerator:
         self,
         *,
         caller: PublicModelCaller | None = None,
+        compiled_caller: CompiledPublicModelCaller | None = None,
         session_context: Any | None = None,
+        telemetry_sink: Any | None = None,
     ) -> None:
         self._caller = caller or _default_public_model_caller
+        self._compiled_caller = compiled_caller or _default_compiled_public_model_caller
+        self._telemetry_sink = telemetry_sink
         self.model_route = CUM2_MODEL_ROUTE
         if session_context is None:
             from nana.runtime.social_session import SocialSessionCache
@@ -190,6 +212,88 @@ class PublicResponseGenerator:
             session_context = SocialSessionCache()
         self._session_context = session_context
         self.delivery_recorder = SessionDeliveryRecorder(session_context)
+
+    @staticmethod
+    def _generation_request_id(
+        output_id: str,
+        source_attempt_id: str,
+        revision: int,
+        correlation_id: str,
+    ) -> str:
+        value = (
+            f"{output_id}\x1f{source_attempt_id}\x1f{revision}\x1f{correlation_id}"
+        ).encode("utf-8")
+        return "cum2-generation:" + hashlib.sha256(value).hexdigest()
+
+    def _build_compiled_context(
+        self,
+        *,
+        scope: PublicEventScope,
+        source_text: str,
+        output_id: str,
+        source_attempt_id: str,
+        revision: int,
+        now: float,
+    ) -> Any:
+        from nana.runtime.context_runtime import (
+            build_public_cum2_plan,
+            resolve_public_cum2_request,
+        )
+
+        correlation_id = compute_correlation_id(scope)
+        request = resolve_public_cum2_request(
+            scope=scope,
+            current_input=source_text,
+            request_id=self._generation_request_id(
+                output_id,
+                source_attempt_id,
+                revision,
+                correlation_id,
+            ),
+            correlation_id=correlation_id,
+            wall_clock=lambda: float(now),
+            monotonic_clock=lambda: float(now),
+        )
+        continuity_source = self._session_context.capture_continuity_source(request)
+        return build_public_cum2_plan(request, continuity_source)
+
+    def _emit_shadow_telemetry(
+        self,
+        compiled: Any,
+        messages: list[dict[str, str]],
+    ) -> None:
+        try:
+            from nana.runtime.context_contracts import CompiledMessage
+            from nana.runtime.context_telemetry import (
+                emit_context_telemetry,
+                emit_sent_context_telemetry,
+            )
+
+            manifest = compiled.manifest
+            emit_context_telemetry(
+                compiled,
+                label="candidate_context",
+                production_bound=False,
+                sink=self._telemetry_sink,
+            )
+            emit_sent_context_telemetry(
+                tuple(
+                    CompiledMessage(role=message["role"], content=message["content"])
+                    for message in messages
+                ),
+                request_id=manifest.request_id,
+                correlation_id=manifest.correlation_id,
+                capture_id=manifest.capture_id,
+                snapshot_revision=manifest.snapshot_revision,
+                model=manifest.model,
+                resolved_model=manifest.resolved_model,
+                resolved_provider=manifest.resolved_provider,
+                lane=manifest.lane,
+                route=manifest.route,
+                sink=self._telemetry_sink,
+            )
+        except Exception:
+            pass
 
     def generate(
         self,
@@ -226,30 +330,90 @@ class PublicResponseGenerator:
             return GenerationResult("rejected", "source_text_mismatch")
 
         try:
+            context_mode = _context_cum2_mode()
+        except ValueError as exc:
+            return GenerationResult("rejected", str(exc))
+
+        public_room_context = ""
+        try:
             self._session_context.record_public_turn(
                 scope=scope,
                 text=normalized_source,
                 revision=revision,
                 attempt_id=source_attempt_id,
             )
-            public_room_context = self._session_context.format_public_room_context(
-                scope=scope,
-                limit=5,
-            )
+            if context_mode in {"legacy", "shadow"}:
+                public_room_context = self._session_context.format_public_room_context(
+                    scope=scope,
+                    limit=5,
+                )
         except Exception:
             public_room_context = ""
+
+        compiled = None
+        if context_mode in {"shadow", "canonical"}:
+            try:
+                compiled = self._build_compiled_context(
+                    scope=scope,
+                    source_text=normalized_source,
+                    output_id=canonical_output_id,
+                    source_attempt_id=source_attempt_id,
+                    revision=revision,
+                    now=float(now),
+                )
+            except Exception:
+                if context_mode == "canonical":
+                    return GenerationResult("failed", "context_compile_error")
+
+        if context_mode == "canonical":
+            if compiled is None:
+                return GenerationResult("failed", "context_compile_error")
+            from nana.runtime import context_runtime as canonical_runtime
+            from nana.runtime.context_contracts import ContextContractError
+
+            try:
+                canonical_runtime.require_cum2_canonical_dispatch_ready(compiled)
+            except ContextContractError as exc:
+                reason = (
+                    exc.code
+                    if exc.code in {
+                        "budget_policy_unapproved",
+                        "canonical_runtime_not_ready",
+                    }
+                    else "canonical_runtime_not_ready"
+                )
+                return GenerationResult("rejected", reason)
+            except Exception:
+                return GenerationResult("rejected", "canonical_runtime_not_ready")
+            messages = None
+        else:
+            try:
+                messages = _public_messages(
+                    scope,
+                    normalized_source,
+                    public_room_context,
+                )
+            except ValueError as exc:
+                return GenerationResult("rejected", str(exc))
+            if context_mode == "shadow" and compiled is not None:
+                self._emit_shadow_telemetry(compiled, messages)
+
         try:
-            messages = _public_messages(scope, normalized_source, public_room_context)
-        except ValueError as exc:
-            return GenerationResult("rejected", str(exc))
-        try:
-            raw_reply, _debug = self._caller(
-                model_name=self.model_route,
-                messages=messages,
-                max_tokens=180,
-                temperature=0.75,
-                timeout_s=30.0,
-            )
+            if context_mode == "canonical":
+                raw_reply, _debug, _receipt = self._compiled_caller(
+                    compiled,
+                    max_tokens=180,
+                    temperature=0.75,
+                    timeout_s=30.0,
+                )
+            else:
+                raw_reply, _debug = self._caller(
+                    model_name=self.model_route,
+                    messages=messages,
+                    max_tokens=180,
+                    temperature=0.75,
+                    timeout_s=30.0,
+                )
         except Exception:
             return GenerationResult("failed", "provider_error")
         if raw_reply is None:

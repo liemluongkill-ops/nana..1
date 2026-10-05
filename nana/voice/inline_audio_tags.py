@@ -1,4 +1,4 @@
-"""Curated Eleven v3 inline audio-tag adapter for Nana voice."""
+"""Curated public ElevenLabs inline audio-tag adapter for Nana voice."""
 
 from __future__ import annotations
 
@@ -6,6 +6,8 @@ from dataclasses import dataclass
 import os
 import re
 from typing import Any
+
+from nana.config import ELEVEN_PUBLIC_TTS_MODEL
 
 
 PHASE = "CORE-VOICE-INLINE-AUDIO-TAGS-1"
@@ -357,7 +359,7 @@ def inline_audio_tag_status_lines() -> list[str]:
         (
             "  Mode: provider_adapter | "
             f"enabled={INLINE_AUDIO_TAGS_ENABLED} | max_tags={INLINE_AUDIO_TAG_MAX} | "
-            "model=eleven_v3"
+            f"model={ELEVEN_PUBLIC_TTS_MODEL}"
         ),
         "  Flow: tagged_reply -> normalize/filter -> one utterance -> ElevenLabs",
         "  Display: terminal/chat hides recognized tags; spoken text keeps canonical tags",

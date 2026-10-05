@@ -914,6 +914,7 @@ def test_failed_explicit_save_stops_before_model() -> None:
     config = sys.modules["nana.config"]
     for name, value in {
         "GPT_COOLDOWN": 0, "PRIVATE_VOICE_OVERLAP_COALESCE_MS": 0,
+        "LLMGATE_CHEAP_MODEL": "fake", "LLMGATE_MAIN_MODEL": "fake",
         "PRIVATE_VOICE_OVERLAP_ENABLED": False, "PRIVATE_VOICE_OVERLAP_MAX_CHARS": 500,
         "PRIVATE_VOICE_OVERLAP_MIN_CHARS": 20, "PRIVATE_VOICE_TTD_CHUNK_MAX_CHARS": 200,
         "PRIVATE_VOICE_TTD_CHUNK_TARGET_CHARS": 100, "PRIVATE_VOICE_TTD_ENABLED": False,
@@ -990,6 +991,9 @@ def test_failed_explicit_save_stops_before_model() -> None:
             "nana.brain.gpt", StreamingReplySurfaceSanitizer=PassthroughStream,
             TerminalAudioTagStreamSanitizer=PassthroughStream, ask_gpt=fake_sync,
             ask_gpt_stream=fake_stream,
+            _public_cross_session_query_eligible=lambda _text: False,
+            is_temporal_question=lambda _text: False,
+            llmgate_public_chat_model=lambda: "fake",
             strip_terminal_audio_tags=lambda value: value,
         ),
         "nana.integrations": _namespace("nana.integrations", NANA_ROOT / "integrations"),

@@ -1,8 +1,13 @@
 """One optional avatar reaction for a committed conversational voice turn."""
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 import threading
+from typing import Iterator, Protocol
 import uuid
+
+from nana.runtime.private_voice_receipts import PrivateVoiceContext
 
 
 DAILY_REACTION_GUIDE = """
@@ -20,7 +25,30 @@ NANA'S NATURAL AVATAR REACTION
 """.strip()
 
 
+class _PrivateAvatarPublisher(Protocol):
+    def publish_reply(self, context: PrivateVoiceContext, reply: str) -> bool: ...
+
+
+_PRIVATE_AVATAR_SCOPE: ContextVar[
+    tuple[_PrivateAvatarPublisher, PrivateVoiceContext] | None
+] = ContextVar("private_avatar_scope", default=None)
+
+
+@contextmanager
+def private_avatar_scope(
+    publisher: _PrivateAvatarPublisher,
+    context: PrivateVoiceContext,
+) -> Iterator[None]:
+    token = _PRIVATE_AVATAR_SCOPE.set((publisher, context))
+    try:
+        yield
+    finally:
+        _PRIVATE_AVATAR_SCOPE.reset(token)
+
+
 def daily_reaction_prompt() -> str:
+    if _PRIVATE_AVATAR_SCOPE.get() is not None:
+        return DAILY_REACTION_GUIDE
     from nana.runtime.avatar_intent_gateway import get_avatar_intent_gateway
     gateway = get_avatar_intent_gateway()
     return DAILY_REACTION_GUIDE if gateway.enabled and gateway.running and gateway.reply_reactions_enabled else ''
@@ -29,7 +57,12 @@ def daily_reaction_prompt() -> str:
 class AvatarReplyTurn:
     def __init__(self, source: str = 'chat_reply'):
         self.source = source
-        self.correlation_id = uuid.uuid4().hex
+        self._private_binding = _PRIVATE_AVATAR_SCOPE.get()
+        self.correlation_id = (
+            self._private_binding[1].correlation_id
+            if self._private_binding is not None
+            else uuid.uuid4().hex
+        )
         self._lock = threading.Lock()
         self._considered = False
 
@@ -40,6 +73,12 @@ class AvatarReplyTurn:
             if self._considered:
                 return None
             self._considered = True
+        if self._private_binding is not None:
+            publisher, context = self._private_binding
+            try:
+                return bool(publisher.publish_reply(context, reply))
+            except Exception:
+                return False
         from nana.runtime.avatar_intent_gateway import publish_reply_avatar
         result = publish_reply_avatar(reply, source=self.source, correlation_id=self.correlation_id)
         if result.ok and result.intent is not None:

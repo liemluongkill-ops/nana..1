@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 from pathlib import Path
 
+# This smoke asserts LLMGate transport behavior with fake callers; pin the
+# private route so a <repository>/.env openai_direct default never reaches the network.
+os.environ["NANA_PRIVATE_LLM_PROVIDER"] = "llmgate"
 
 ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:

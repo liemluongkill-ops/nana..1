@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import asdict, dataclass, replace
+import hashlib
+import json
 import re
 import threading
 import time
@@ -89,7 +91,7 @@ def _similar_recent_turns(turns: list["PublicTurn"], topic: Any, *, limit: int =
     return [
         turn
         for turn in turns[-limit:]
-        if turn.reply_preview and _token_similarity(folded, turn.message_preview) >= 0.72
+        if _token_similarity(folded, turn.message_preview) >= 0.72
     ]
 
 
@@ -370,6 +372,121 @@ class SocialSessionCache:
                     self._sessions.pop(next(iter(self._sessions)))
                 self._sessions[key] = existing
             return existing
+
+    def _peek_partition(self, scope: PublicEventScope) -> "SocialSessionCache | None":
+        """Return an existing exact-scope partition without lifecycle writes."""
+
+        key = (scope.platform, scope.room_id, scope.stream_session_id)
+        if self._bound_scope is not None:
+            own = (
+                self._bound_scope.platform,
+                self._bound_scope.room_id,
+                self._bound_scope.stream_session_id,
+            )
+            return self if key == own else None
+        with self._lock:
+            return self._sessions.get(key)
+
+    def capture_continuity_source(self, request):
+        """Capture delivered public continuity from an existing exact partition.
+
+        This read deliberately bypasses partition creation and TTL expiry. The
+        current input event is removed before the five-record bound is applied.
+        """
+
+        from nana.runtime.context_contracts import (
+            ContextContractError,
+            Freshness,
+            Lane,
+            SourceSnapshot,
+            _require_canonical_public_scope,
+            require_resolved_context_request,
+        )
+
+        request = require_resolved_context_request(request)
+        if request.scope.lane is not Lane.PUBLIC_STAGE:
+            raise ContextContractError("public_source_capture_denied")
+        scope = _require_canonical_public_scope(request.scope.public_scope)
+        cache = self._peek_partition(scope)
+        rows = []
+        if cache is not None:
+            with cache._lock:
+                captured_turns = tuple(cache._recent_turns)
+            exact = []
+            for turn in captured_turns:
+                turn_scope = turn.scope
+                if turn_scope is None:
+                    continue
+                if (
+                    turn_scope.platform,
+                    turn_scope.room_id,
+                    turn_scope.stream_session_id,
+                ) != (scope.platform, scope.room_id, scope.stream_session_id):
+                    continue
+                if turn_scope.event_id == scope.event_id:
+                    continue
+                exact.append(turn)
+            for turn in exact[-5:]:
+                turn_scope = turn.scope
+                reply = (
+                    _preview(turn.reply_preview, 72)
+                    if turn.delivery_state == "delivered"
+                    else ""
+                )
+                semantic = {
+                    "platform": turn_scope.platform,
+                    "room_id": turn_scope.room_id,
+                    "stream_session_id": turn_scope.stream_session_id,
+                    "actor_key": turn_scope.identity.actor_key,
+                    "event_id": turn_scope.event_id,
+                    "message": _preview(turn.message_preview, 96),
+                    "reply": reply,
+                    "delivery_state": (
+                        "delivered"
+                        if turn.delivery_state == "delivered"
+                        else "not_delivered"
+                    ),
+                }
+                encoded = json.dumps(
+                    semantic,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+                rows.append(
+                    {
+                        **semantic,
+                        "display_name": _prompt_display_name(turn.viewer_name),
+                        "timestamp": float(turn.timestamp),
+                        "content_hash": hashlib.sha256(encoded).hexdigest(),
+                    }
+                )
+
+        payload = {
+            "platform": scope.platform,
+            "room_id": scope.room_id,
+            "stream_session_id": scope.stream_session_id,
+            "current_event_id": scope.event_id,
+            "turns": rows,
+        }
+        encoded = json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+        observed_at = max((row["timestamp"] for row in rows), default=None)
+        if observed_at is not None:
+            observed_at = min(observed_at, request.captured_wall_time)
+        return SourceSnapshot(
+            source="public_social_session",
+            revision="public-continuity-sha256-" + hashlib.sha256(encoded).hexdigest(),
+            observed_at=observed_at,
+            captured_at=request.captured_wall_time,
+            freshness=Freshness.FRESH if rows else Freshness.UNKNOWN,
+            payload=payload,
+        )
 
     def start_session(self, scope: PublicEventScope) -> None:
         if self._bound_scope is not None:
@@ -1031,13 +1148,14 @@ class SocialSessionCache:
             ]
         )
         if similar_turns:
-            last_similar = similar_turns[-1]
             repeat_count = len(similar_turns) + 1
             lines.append(f"- similar_question_count_this_session={repeat_count}")
             lines.append(
                 "- Similar recent public question detected: answer the current message, but vary wording, image, and structure."
             )
-            lines.append(f"- Avoid repeating Nana's recent wording: \"{last_similar.reply_preview}\"")
+            last_reply = next((turn.reply_preview for turn in reversed(similar_turns) if turn.reply_preview), "")
+            if last_reply:
+                lines.append(f"- Avoid repeating Nana's recent wording: \"{last_reply}\"")
             if repeat_count >= 3:
                 lines.append("- The viewer is repeating/testing the same prompt; Nana may lightly tease that pattern instead of pretending it is new.")
                 lines.append("- Do not reuse the same room/đèn/nhịp motif again; pick a different public-safe angle.")

@@ -1,5 +1,26 @@
 # Nana 3D Avatar State
 
+## 2026-10-02 - Separate private acceptance from public timing
+
+The September look-only prototype section below is historical, not the latest
+whole-avatar boundary. Later private NanaApp avatar behavior has a bounded
+owner receipt at <NANA_REPO>/nana/docs/PRIVATE_NANAAPP_AVATAR_OWNER_EVIDENCE_20260930.md;
+the private web bridge default is ON for that accepted private scope.
+
+Public OBS Stage C has real local Unity/OBS capture with synthetic audio, but
+failed A/V <=100 ms on 2026-10-01. The public visual flag remains default OFF.
+No full public avatar/livestream production acceptance follows from the private
+receipt. Sink-write/cancel timing needs Core reproduction before a correction.
+Read <NANA_APP>/docs/NANA_OBS_STAGE_C_LOCAL_EVIDENCE_20261001.md,
+<NANA_APP>/docs/NANA_WEB_UI_STATE.md and <NANA_REPO>/nana/docs/STREAM_V1_STATE.md.
+Do not edit raw Unity controls or add another voice source as a Wiki repair.
+
+## Historical material
+
+Sections below keep their original dates and claim limits. Earlier
+labels such as current, pending and next step are historical; the
+reconciled overview above and newer owning local evidence take priority.
+
 ## 2026-09-05 Current Decision
 
 Status: **`NANA-3D-AVATAR-WEBGL-V1 = OWNER VISUAL ACCEPTED / LOCAL
@@ -278,10 +299,46 @@ The following are open and must not be silently promoted to complete:
    publish or redistribute source assets as part of a web deployment without
    checking their licenses.
 
-## Operational Procedure
+## Operator Reopen Procedure
 
-Private startup, activation, and operator approval commands are intentionally
-omitted from this public snapshot.
+Only use this when Ba explicitly asks to reopen the 3D avatar scope.
+
+Start Nana Core with the local gateway:
+
+```bat
+D:
+cd \py
+set NANA_AVATAR_GATEWAY_ENABLED=1
+set NANA_AVATAR_GATEWAY_TRANSPORT=recording
+set NANA_AVATAR_GATEWAY_PORT=8766
+python -u <NANA_REPO>\nana\__main__.py
+```
+
+Start the browser host in a second terminal:
+
+```bat
+cd /d <NANA_AVATAR_WEB>\web
+npm run dev
+```
+
+Open:
+
+```text
+http://127.0.0.1:5173
+```
+
+Minimal checks:
+
+```text
+/avatar-runtime-status
+/avatar-runtime-look-preview left
+/avatar-runtime-look left
+/avatar-runtime-look right
+/avatar-runtime-look center
+```
+
+Stop both local processes with `Ctrl+C` after the session. Do not leave the
+gateway or dev server running merely because V1 was previously accepted.
 
 ## Stop Condition And Next Work
 

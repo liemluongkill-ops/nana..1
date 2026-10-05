@@ -37,6 +37,7 @@ _DISPATCH_SOURCE_PATHS = (
     _CLI_DIR / "starter_commands.py",
     _CLI_DIR / "vts_commands.py",
     _CLI_DIR / "voice_commands.py",
+    _CLI_DIR / "web_commands.py",
 )
 
 

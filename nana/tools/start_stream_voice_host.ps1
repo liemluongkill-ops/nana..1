@@ -15,6 +15,7 @@ param(
     [ValidateRange(1, 2147483647)][int]$MaxPolls = 3600,
     [ValidateSet('api-key', 'oauth', 'oauth-cache')][string]$ReadAuth = 'api-key',
     [string]$PythonPath = '',
+    [switch]$PublicVisualSignals,
     [switch]$InCurrentWindow,
     [switch]$NoPause
 )
@@ -33,7 +34,8 @@ if (-not $InCurrentWindow) {
     $sessionOptions = @{
         Video = $Video; Demo = [bool]$Demo; MaxTurns = $MaxTurns;
         Minutes = $Minutes; MaxPolls = $MaxPolls; ReadAuth = $ReadAuth;
-        PythonPath = $PythonPath; NoPause = [bool]$NoPause
+        PythonPath = $PythonPath; PublicVisualSignals = [bool]$PublicVisualSignals;
+        NoPause = [bool]$NoPause
     }
     $sessionJson = $sessionOptions | ConvertTo-Json -Compress
     $sessionData = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($sessionJson))
@@ -50,11 +52,16 @@ if (-not $InCurrentWindow) {
 $sessionOldTitle = $Host.UI.RawUI.WindowTitle
 $sessionOldEncoding = [Console]::OutputEncoding
 $sessionOldUtf8 = [Environment]::GetEnvironmentVariable('PYTHONUTF8', 'Process')
+$sessionOldPublicVisual = [Environment]::GetEnvironmentVariable('NANA_STREAM_PUBLIC_VISUAL_SIGNALS_ENABLED', 'Process')
 $sessionExitCode = 2
 try {
     $Host.UI.RawUI.WindowTitle = 'Nana Voice Host'
     [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
     $env:PYTHONUTF8 = '1'
+    if ($PublicVisualSignals) {
+        $env:NANA_STREAM_PUBLIC_VISUAL_SIGNALS_ENABLED = '1'
+        Write-Output 'Public visual signals: enabled for this session.'
+    }
     $sessionArguments = @('-u', '-B', (Join-Path $PSScriptRoot 'start_stream_voice_session.py'))
     if ($Video) { $sessionArguments += $Video }
     if ($Demo) { $sessionArguments += '--demo' }
@@ -65,6 +72,8 @@ try {
 } finally {
     if ($null -eq $sessionOldUtf8) { Remove-Item Env:PYTHONUTF8 -ErrorAction SilentlyContinue }
     else { $env:PYTHONUTF8 = $sessionOldUtf8 }
+    if ($null -eq $sessionOldPublicVisual) { Remove-Item Env:NANA_STREAM_PUBLIC_VISUAL_SIGNALS_ENABLED -ErrorAction SilentlyContinue }
+    else { $env:NANA_STREAM_PUBLIC_VISUAL_SIGNALS_ENABLED = $sessionOldPublicVisual }
     [Console]::OutputEncoding = $sessionOldEncoding
     $Host.UI.RawUI.WindowTitle = $sessionOldTitle
 }

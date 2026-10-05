@@ -25,10 +25,13 @@ from enum import Enum
 from typing import Any, Protocol
 from urllib.parse import parse_qs, urlsplit
 
-from nana.runtime.avatar_mouth_stream import get_avatar_mouth_stream
 from nana.runtime.avatar_reaction_policy import (
     OWNER_DISABLED_ACTIONS, REPLY_ACTIONS, REPLY_COOLDOWN_SECONDS,
     action_block_reason, select_reply_cue,
+)
+from nana.runtime.stream_public_visual_signals import (
+    PROTOCOL_NAME as PUBLIC_VISUAL_PROTOCOL_NAME,
+    STALE_AFTER_MS as PUBLIC_VISUAL_STALE_AFTER_MS,
 )
 
 
@@ -42,6 +45,12 @@ MAX_METADATA_ITEMS = 12
 MAX_METADATA_STRING = 160
 MAX_HTTP_BODY_BYTES = 16 * 1024
 MAX_COMMAND_HISTORY = 64
+PUBLIC_VISUAL_HOST = "127.0.0.1"
+PUBLIC_VISUAL_PORT = 8766
+PUBLIC_VISUAL_PATH = "/v1/avatar/public-signals"
+PUBLIC_VISUAL_ALLOWED_ORIGIN = "http://127.0.0.1:5174"
+MAX_PUBLIC_VISUAL_TARGET_CHARS = 512
+MAX_PUBLIC_VISUAL_RESPONSE_BYTES = 16 * 1024
 LOOK_MAX_YAW_DEGREES = 30.0
 LOOK_MAX_PITCH_DEGREES = 15.0
 LOOK_MAX_ROLL_DEGREES = 12.0
@@ -1024,6 +1033,8 @@ class AvatarIntentGateway:
         }
         self._command_history: list[tuple[int, float, AvatarIntent]] = []
         self._command_session = uuid.uuid4().hex
+        from nana.runtime.avatar_mouth_stream import get_avatar_mouth_stream
+
         self.mouth_stream = get_avatar_mouth_stream()
         self._command_cursor = 0
         self._last_error = ""
@@ -1439,6 +1450,255 @@ class AvatarIntentGateway:
         ]
 
 
+@dataclass(frozen=True)
+class PublicVisualHttpResponse:
+    status_code: int
+    headers: dict[str, str]
+    payload: dict[str, Any]
+
+
+class PublicVisualSignalHttpApplication:
+    """Pure, testable HTTP policy for the public-only visual route."""
+
+    def __init__(self, store: Any) -> None:
+        if store is None or not callable(getattr(store, "snapshot", None)):
+            raise TypeError("public_visual_store_required")
+        self._store = store
+
+    def _empty_payload(self, *, ok: bool) -> dict[str, Any]:
+        try:
+            payload = self._store.snapshot(after=(1 << 63) - 1)
+            cursor = payload.get("cursor", 0)
+            if type(cursor) is not int or cursor < 0:
+                cursor = 0
+        except Exception:
+            cursor = 0
+        return {
+            "ok": bool(ok),
+            "protocol": PUBLIC_VISUAL_PROTOCOL_NAME,
+            "cursor": cursor,
+            "stale_after_ms": PUBLIC_VISUAL_STALE_AFTER_MS,
+            "current": None,
+        }
+
+    def _response(
+        self,
+        status_code: int,
+        payload: dict[str, Any],
+        *,
+        origin: str | None,
+    ) -> PublicVisualHttpResponse:
+        headers = {
+            "Cache-Control": "no-store",
+            "Content-Type": "application/json; charset=utf-8",
+        }
+        if origin == PUBLIC_VISUAL_ALLOWED_ORIGIN:
+            headers["Access-Control-Allow-Origin"] = PUBLIC_VISUAL_ALLOWED_ORIGIN
+            headers["Vary"] = "Origin"
+        return PublicVisualHttpResponse(status_code, headers, payload)
+
+    def handle(
+        self,
+        method: str,
+        target: str,
+        *,
+        origin: str | None = None,
+    ) -> PublicVisualHttpResponse:
+        normalized_origin = str(origin or "")
+        if normalized_origin and normalized_origin != PUBLIC_VISUAL_ALLOWED_ORIGIN:
+            return self._response(
+                403,
+                self._empty_payload(ok=False),
+                origin=None,
+            )
+        if str(method or "").upper() != "GET":
+            return self._response(
+                405,
+                self._empty_payload(ok=False),
+                origin=normalized_origin,
+            )
+        raw_target = str(target or "")
+        if not raw_target or len(raw_target) > MAX_PUBLIC_VISUAL_TARGET_CHARS:
+            return self._response(
+                400,
+                self._empty_payload(ok=False),
+                origin=normalized_origin,
+            )
+        split = urlsplit(raw_target)
+        if split.scheme or split.netloc or split.fragment:
+            return self._response(
+                400,
+                self._empty_payload(ok=False),
+                origin=normalized_origin,
+            )
+        if split.path != PUBLIC_VISUAL_PATH:
+            return self._response(
+                404,
+                self._empty_payload(ok=False),
+                origin=normalized_origin,
+            )
+        query = parse_qs(split.query, keep_blank_values=True)
+        if any(key != "after" for key in query) or len(query.get("after", [])) > 1:
+            return self._response(
+                400,
+                self._empty_payload(ok=False),
+                origin=normalized_origin,
+            )
+        raw_after = query.get("after", ["0"])[0]
+        if not raw_after.isascii() or not raw_after.isdigit():
+            return self._response(
+                400,
+                self._empty_payload(ok=False),
+                origin=normalized_origin,
+            )
+        after = int(raw_after)
+        if after > (1 << 63) - 1:
+            return self._response(
+                400,
+                self._empty_payload(ok=False),
+                origin=normalized_origin,
+            )
+        try:
+            payload = self._store.snapshot(after=after)
+        except Exception:
+            return self._response(
+                503,
+                self._empty_payload(ok=False),
+                origin=normalized_origin,
+            )
+        return self._response(200, payload, origin=normalized_origin)
+
+
+def _make_public_visual_http_handler(application: PublicVisualSignalHttpApplication):
+    class Handler(http.server.BaseHTTPRequestHandler):
+        server_version = "NanaPublicVisual/1"
+
+        def log_message(self, format: str, *args: Any) -> None:
+            return None
+
+        def _dispatch(self, method: str) -> None:
+            response = application.handle(
+                method,
+                self.path,
+                origin=self.headers.get("Origin"),
+            )
+            encoded = json.dumps(
+                response.payload,
+                ensure_ascii=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+            if len(encoded) > MAX_PUBLIC_VISUAL_RESPONSE_BYTES:
+                fallback = application._empty_payload(ok=False)
+                encoded = json.dumps(
+                    fallback,
+                    ensure_ascii=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+                response = PublicVisualHttpResponse(500, response.headers, fallback)
+            self.send_response(response.status_code)
+            for name, value in response.headers.items():
+                self.send_header(name, value)
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def do_GET(self) -> None:  # noqa: N802 - stdlib handler API
+            self._dispatch("GET")
+
+        def do_HEAD(self) -> None:  # noqa: N802 - stdlib handler API
+            self._dispatch("HEAD")
+
+        def do_OPTIONS(self) -> None:  # noqa: N802 - stdlib handler API
+            self._dispatch("OPTIONS")
+
+        def do_POST(self) -> None:  # noqa: N802 - stdlib handler API
+            self._dispatch("POST")
+
+        def do_PUT(self) -> None:  # noqa: N802 - stdlib handler API
+            self._dispatch("PUT")
+
+        def do_PATCH(self) -> None:  # noqa: N802 - stdlib handler API
+            self._dispatch("PATCH")
+
+        def do_DELETE(self) -> None:  # noqa: N802 - stdlib handler API
+            self._dispatch("DELETE")
+
+    return Handler
+
+
+class PublicVisualSignalServer:
+    """Dedicated loopback server exposing only the public visual GET route."""
+
+    def __init__(self, store: Any, *, server_factory=None) -> None:
+        self.application = PublicVisualSignalHttpApplication(store)
+        self._server_factory = server_factory or http.server.ThreadingHTTPServer
+        self._lock = threading.RLock()
+        self._server = None
+        self._thread: threading.Thread | None = None
+        self._last_error = ""
+
+    @property
+    def running(self) -> bool:
+        with self._lock:
+            return self._server is not None
+
+    @property
+    def last_error(self) -> str:
+        with self._lock:
+            return self._last_error
+
+    def start(self) -> bool:
+        with self._lock:
+            if self._server is not None:
+                return True
+            server = None
+            try:
+                handler = _make_public_visual_http_handler(self.application)
+                server = self._server_factory(
+                    (PUBLIC_VISUAL_HOST, PUBLIC_VISUAL_PORT),
+                    handler,
+                )
+                server.daemon_threads = True
+                thread = threading.Thread(
+                    target=server.serve_forever,
+                    name="nana-public-visual-http",
+                    daemon=True,
+                )
+                self._server = server
+                self._thread = thread
+                self._last_error = ""
+                thread.start()
+                return True
+            except Exception as exc:
+                self._server = None
+                self._thread = None
+                self._last_error = f"start_failed:{type(exc).__name__}"
+                if server is not None:
+                    try:
+                        server.server_close()
+                    except Exception:
+                        pass
+                return False
+
+    def stop(self) -> None:
+        with self._lock:
+            server = self._server
+            thread = self._thread
+            self._server = None
+            self._thread = None
+        if server is not None:
+            try:
+                server.shutdown()
+            except Exception:
+                pass
+            try:
+                server.server_close()
+            except Exception:
+                pass
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(timeout=2.0)
+
+
 def _make_http_handler(gateway: AvatarIntentGateway):
     class Handler(http.server.BaseHTTPRequestHandler):
         server_version = "NanaAvatarGateway/1"
@@ -1727,6 +1987,13 @@ __all__ = [
     "InterruptPolicy",
     "PHASE",
     "PROTOCOL_NAME",
+    "PUBLIC_VISUAL_ALLOWED_ORIGIN",
+    "PUBLIC_VISUAL_HOST",
+    "PUBLIC_VISUAL_PATH",
+    "PUBLIC_VISUAL_PORT",
+    "PublicVisualHttpResponse",
+    "PublicVisualSignalHttpApplication",
+    "PublicVisualSignalServer",
     "ReceiptStatus",
     "RecordingTransport",
     "TransportResult",

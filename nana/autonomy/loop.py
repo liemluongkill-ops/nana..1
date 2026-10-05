@@ -32,9 +32,38 @@ from nana.autonomy.expression_gate import ExpressionGate, GateContext
 from nana.autonomy.inner_thought import InnerThought
 from nana.autonomy.observer import RealObserver, init_observer, get_context as observer_get_context
 from nana.autonomy.express import AutonomyExpress
+from nana.runtime.context_autonomy import (
+    PrivateOwnerAutonomyAuthority,
+    require_autonomy_snapshot,
+)
+from nana.runtime.context_contracts import Lane
+from nana.runtime.livestream_identity import is_livestream_source
 
 
 AUTONOMY_DEBUG_STDOUT = os.getenv("NANA_AUTONOMY_DEBUG_STDOUT", "0") == "1"
+
+
+def _select_mode(context) -> str:
+    forced = context.get("forced_mode")
+    if forced is not None:
+        return forced
+    attention_window = str(context.get("attention_window") or "").lower()
+    preferred = {
+        "browse_active": "stream_host",
+        "recent_chat": "stream_host",
+        "browse_light": "observer_aware",
+        "work_paused": "observer_aware",
+        "chill": "idle_banter",
+        "idle": "idle_banter",
+        "away": "idle_banter",
+    }.get(attention_window)
+    order = [preferred] if preferred else []
+    order += [
+        item
+        for item in ("stream_host", "observer_aware", "idle_banter")
+        if item not in order
+    ]
+    return next((item for item in order if item is not None), "idle_banter")
 
 
 class AutonomyState(str, enum.Enum):
@@ -61,7 +90,11 @@ class AutonomyLoop:
             clock=clock,
             rng=self._rng,
         )
-        self._observer = RealObserver(clock=clock, rng=self._rng)
+        self._observer = RealObserver(
+            clock=clock,
+            rng=self._rng,
+            audience_authority=PrivateOwnerAutonomyAuthority(),
+        )
         self._state = AutonomyState.STOPPED
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
@@ -194,53 +227,75 @@ class AutonomyLoop:
 
     def _do_tick(self) -> dict:
         self._tick_count += 1
-        ctx_dict = self._observer.get_context()
-
-        # --- [DEBUG ATTENTION] every tick ---------------------------------
-        self._print_attention_debug(ctx_dict)
-
-        # Consume user override (Phase A6).
         forced_by_user = self._user_override
         self._user_override = False
-        if forced_by_user:
-            ctx_dict["forced_by_user"] = True
-        else:
-            ctx_dict["forced_by_user"] = False
 
-        forced = ctx_dict.get("forced_mode")
-        if forced is not None:
-            mode = forced
-        else:
-            # Phase A7: mode selection no longer pre-picks text (text
-            # picking now calls the LLM, which is too expensive to do
-            # per-mode just to choose). We pick the first mode that
-            # is eligible in the attention window / mood / silence
-            # context. The actual text is picked AFTER the gate in
-            # Step 3 so we never pay an LLM call for a tick the
-            # gate would have rejected.
-            mode = None
-            attention_window = (ctx_dict.get("attention_window") or "").lower()
-            # Simple heuristic: stream_host for browse_active / recent_chat,
-            # observer_aware for browse_light / work_paused, idle_banter
-            # for chill / idle / away.
-            preferred = {
-                "browse_active": "stream_host",
-                "recent_chat":   "stream_host",
-                "browse_light":  "observer_aware",
-                "work_paused":   "observer_aware",
-                "chill":         "idle_banter",
-                "idle":          "idle_banter",
-                "away":          "idle_banter",
-            }.get(attention_window, None)
-            order = [preferred] if preferred else []
-            order += [m for m in ("stream_host", "observer_aware", "idle_banter") if m not in order]
-            for m in order:
-                if m is None:
-                    continue
-                mode = m
-                break
-            if mode is None:
-                mode = "idle_banter"  # safe default
+        # Paused autonomy must not collect owner state. Preserve the established
+        # cadence reason while exiting before the observer boundary.
+        if self._cadence.paused:
+            mode = "idle_banter"
+            _allowed, reason = self._cadence.can_express(mode)
+            self._cadence.record_expression(mode, accepted=False, reason=reason)
+            decision = {
+                "accepted": False,
+                "reason": reason,
+                "level": "skip",
+                "mode": mode,
+            }
+            self._log_tick(decision, mode=mode)
+            self._tally_reject(f"cadence/{reason}")
+            self._print_rejected(
+                f"cadence/{reason}",
+                {"cadence_reason": reason},
+                mode=mode,
+            )
+            return decision
+
+        ctx_dict = self._observer.get_context()
+
+        try:
+            autonomy_snapshot = require_autonomy_snapshot(
+                ctx_dict.get("_autonomy_snapshot")
+            )
+        except Exception:
+            # Unresolved observations get only a fixed neutral cadence identity.
+            # Raw observer fields cannot select a per-mode cooldown bucket.
+            mode = "idle_banter"
+            allowed, reason = self._cadence.can_express(mode)
+            if not allowed:
+                self._cadence.record_expression(mode, accepted=False, reason=reason)
+                decision = {
+                    "accepted": False,
+                    "reason": reason,
+                    "level": "skip",
+                    "mode": mode,
+                }
+                self._log_tick(decision, mode=mode)
+                self._tally_reject(f"cadence/{reason}")
+                self._print_rejected(
+                    f"cadence/{reason}",
+                    {"cadence_reason": reason},
+                    mode=mode,
+                )
+                return decision
+            self._cadence.record_expression(
+                mode,
+                accepted=False,
+                reason="audience_unresolved",
+            )
+            decision = {
+                "accepted": False,
+                "reason": "audience_unresolved",
+                "level": "skip",
+                "mode": mode,
+            }
+            self._log_tick(decision, mode=mode)
+            self._tally_reject("audience_unresolved")
+            self._print_rejected("audience_unresolved", {}, mode=mode)
+            return decision
+
+        frozen_context = autonomy_snapshot.payload
+        mode = _select_mode(frozen_context)
 
         if mode is None:
             decision = {
@@ -252,24 +307,6 @@ class AutonomyLoop:
             self._tally_reject("inner_thought_no_mode")
             self._print_rejected("inner_thought_no_mode", {}, mode=mode)
             return decision
-
-        # Build a GateContext.
-        ctx = GateContext(
-            mode=mode,
-            user_is_typing=ctx_dict.get("user_is_typing", False),
-            game_active=ctx_dict.get("game_active", False),
-            command_in_flight=ctx_dict.get("command_in_flight", False),
-            audio_busy=ctx_dict.get("audio_busy", False),
-            mood_affection=ctx_dict.get("mood_affection", 0.5),
-            scene_relevance=ctx_dict.get("scene_relevance", 0.5),
-            silence_duration_s=ctx_dict.get("silence_duration_s", 0.0),
-            silence_window_s=ctx_dict.get("silence_window_s", 60.0),
-            forced_mode=ctx_dict.get("forced_mode"),
-            jitter_value=ctx_dict.get("jitter_value", 0.5),
-            forced_by_user=forced_by_user,
-        )
-
-        web_ctx = ctx_dict.get("web_context") or {}
 
         # Step 1: cadence.
         allowed, reason = self._cadence.can_express(mode)
@@ -285,6 +322,36 @@ class AutonomyLoop:
             self._tally_reject(f"cadence/{reason}")
             self._print_rejected(f"cadence/{reason}", {"cadence_reason": reason}, mode=mode)
             return decision
+
+        ctx_dict = dict(frozen_context)
+        ctx_dict["_autonomy_snapshot"] = autonomy_snapshot
+        ctx_dict["forced_by_user"] = forced_by_user
+        web_ctx = frozen_context.get("web_context") or {}
+
+        # --- [DEBUG ATTENTION] accepted cadence, validated snapshot ----------
+        self._print_attention_debug(ctx_dict)
+
+        ctx = GateContext(
+            mode=mode,
+            user_is_typing=frozen_context.get("user_is_typing", False),
+            game_active=frozen_context.get("game_active", False),
+            command_in_flight=frozen_context.get("command_in_flight", False),
+            audio_busy=frozen_context.get("audio_busy", False),
+            mood_affection=frozen_context.get("mood_affection", 0.5),
+            scene_relevance=frozen_context.get("scene_relevance", 0.5),
+            silence_duration_s=frozen_context.get("silence_duration_s", 0.0),
+            silence_window_s=frozen_context.get("silence_window_s", 60.0),
+            forced_mode=frozen_context.get("forced_mode"),
+            jitter_value=frozen_context.get("jitter_value", 0.5),
+            forced_by_user=forced_by_user,
+        )
+
+        autonomy_audience = autonomy_snapshot.audience
+        public_audience = autonomy_audience.lane is Lane.PUBLIC_STAGE
+        livestream_stage = (
+            public_audience
+            and is_livestream_source(autonomy_audience.public_scope.platform)
+        )
 
         # Step 2: gate — use debug version for detailed diagnostics.
         gate_debug = self._gate.evaluate_debug(ctx)
@@ -312,7 +379,7 @@ class AutonomyLoop:
         # The older "stream_host" autonomy mode is also used for browser/recent
         # chat banter, so it is not enough to prove Nana is currently live.
         # Callers that truly run a public stream lane must set this flag.
-        if ctx_dict.get("stream_stage_policy_gate"):
+        if livestream_stage:
             try:
                 from nana.runtime.stream_state import get_stream_state
                 from nana.runtime.proactive_engine import get_proactive_engine
@@ -378,13 +445,26 @@ class AutonomyLoop:
             return decision
 
         # Step 4: express.
-        if ctx_dict.get("stream_stage_policy_gate") is True:
+        if public_audience:
             from dataclasses import replace
             from nana.runtime.persona_boundary import sanitize_public_reply
-            from nana.runtime.livestream_identity import finalize_livestream_identity
-            thought = replace(thought, text=finalize_livestream_identity(
-                sanitize_public_reply(thought.text), source="livestream",
-            ))
+
+            scope = autonomy_audience.public_scope
+            public_text = sanitize_public_reply(
+                thought.text,
+                viewer_name=scope.display_name,
+            )
+            if livestream_stage:
+                from nana.runtime.livestream_identity import (
+                    finalize_livestream_identity,
+                )
+
+                public_text = finalize_livestream_identity(
+                    public_text,
+                    source=scope.platform,
+                    viewer_name=scope.display_name,
+                )
+            thought = replace(thought, text=public_text)
         trace = self._express.emit(mode, gate_decision.level, gate_decision.payload, thought)
         self._cadence.record_expression(mode, accepted=True, reason="ok")
         decision = {

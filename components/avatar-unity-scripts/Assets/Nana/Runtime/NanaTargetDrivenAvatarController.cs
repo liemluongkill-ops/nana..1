@@ -204,6 +204,10 @@ public sealed class NanaTargetDrivenAvatarController : MonoBehaviour
 
     private void Awake()
     {
+#if UNITY_WEBGL && !UNITY_EDITOR
+        // HTML chat/settings own typing when focused; the canvas keeps its input.
+        WebGLInput.captureAllKeyboardInput = false;
+#endif
         _gatewayCursor = Mathf.Max(0, gatewayInitialCursor);
         DiscoverRig();
         ScheduleNextBlink();

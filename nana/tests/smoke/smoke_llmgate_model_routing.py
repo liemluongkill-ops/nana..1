@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import os
+import re
 import sys
+import types
 from pathlib import Path
 from unittest.mock import patch
 
@@ -10,6 +13,166 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+
+def _module(name, **values):
+    module = types.ModuleType(name)
+    module.__dict__.update(values)
+    sys.modules[name] = module
+    return module
+
+
+class _Lock:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+
+class _Affect:
+    def as_emotion_dict(self):
+        return {"affection": 0.5, "annoyance": 0.0, "playfulness": 0.5}
+
+
+def _forbidden(name):
+    def fail(*_args, **_kwargs):
+        raise AssertionError(f"routing smoke touched {name}")
+
+    return fail
+
+
+def _install_isolated_dependencies():
+    """Install fake owners before importing real route/product modules."""
+
+    package_root = ROOT / "nana"
+    nana = _module("nana")
+    nana.__path__ = [str(package_root)]
+    for name, relative in (
+        ("nana.actions", "actions"),
+        ("nana.brain", "brain"),
+        ("nana.core", "core"),
+        ("nana.runtime", "runtime"),
+        ("nana.voice", "voice"),
+    ):
+        package = _module(name)
+        package.__path__ = [str(package_root / relative)]
+    _module(
+        "nana.config",
+        LLM_CHAT_MAX_TOKENS=420,
+        LLM_COMPACT_PRIVATE_PROMPT_ENABLED=True,
+        LLM_FAST_PRIVATE_MAX_TOKENS=80,
+        LLM_PROMPT_MEMORY_RULE_LIMIT=12,
+        LLM_PROMPT_RECENT_CHAT_LINES=8,
+        LLM_PROMPT_RETRIEVAL_LIMIT=3,
+        LLM_PROMPT_SHORT_TERM_LINES=6,
+        LLM_STORY_MAX_TOKENS=1000,
+        LLMGATE_CHEAP_MODEL="gpt-5.4-mini",
+        LLMGATE_FALLBACK_MODELS=["gpt-5.4", "gpt-5.5", "gpt-5.4-mini", "gemini-3.5-flash"],
+        LLMGATE_MAIN_MODEL="gemini-3-flash",
+        LLMGATE_MAIN_REASONING_EFFORT="none",
+        LLMGATE_PUBLIC_FALLBACK_MODELS=[
+            "gemini-3-flash",
+            "grok-4.20-0309-non-reasoning",
+            "gemini-3.1-flash-lite",
+        ],
+        LLMGATE_PUBLIC_MODEL="gemini-3-flash",
+        LLMGATE_SETTINGS_PATH="fixture-settings-never-read.json",
+        LLMGATE_TIMEOUT=30.0,
+        NANA_CHAT_PROVIDER="llmgate",
+        NANA_CONTEXT_AUTONOMY_MODE="legacy",
+        NANA_CONTEXT_BUDGET_POLICY_REVISION="",
+        NANA_CONTEXT_CUM2_MODE="legacy",
+        NANA_CONTEXT_PRIVATE_MODE="legacy",
+        NANA_CONTEXT_PUBLIC_GPT_MODE="legacy",
+        NANA_OPENAI_FALLBACK_ENABLED=False,
+        NANA_PERSONALITY="fixture-personality",
+        NANA_SHARED_HISTORY="fixture-shared-history",
+        OPENAI_API_KEY="fixture-key",
+        OPENAI_FALLBACK_MODELS=[],
+        OPENAI_MODEL="fixture-openai",
+    )
+    _module("openai", OpenAI=lambda **_kwargs: object())
+    _module(
+        "nana.memory",
+        load_recent_chat=_forbidden("production history"),
+        memory={"emotion": {}, "short_term": [], "long_term": []},
+        memory_lock=_Lock(),
+    )
+    _module("nana.runtime.history_privacy", redact_history_text=lambda value: value)
+    _module("nana.runtime.context", context_snapshot=_forbidden("production context"))
+    _module(
+        "nana.runtime.identity",
+        load_identity=lambda: {},
+        resolve_user=lambda **_kwargs: {},
+        format_identity_block=lambda *_a, **_k: "fixture identity",
+    )
+    _module(
+        "nana.runtime.live_awareness",
+        build_live_awareness_snapshot=lambda *_a, **_k: {},
+        format_live_awareness_prompt=lambda *_a, **_k: "",
+    )
+    _module(
+        "nana.runtime.awareness_memory",
+        get_awareness_memory=lambda: types.SimpleNamespace(),
+        get_deterministic_browser_answer=lambda *_a, **_k: "",
+        get_deterministic_temporal_answer=lambda *_a, **_k: "",
+        get_ground_truth_object=lambda *_a, **_k: {},
+        format_surface_phrase=lambda *_a, **_k: "",
+        guard_with_fallback=lambda value, *_a, **_k: value,
+        ContinuityTracker=lambda: types.SimpleNamespace(record_mention=lambda *_a: None),
+        clean_browser_title=lambda value: value,
+        is_bad_browser_title=lambda _value: False,
+    )
+    _module(
+        "nana.runtime.memory_spine",
+        get_memory_spine=lambda: types.SimpleNamespace(),
+        format_prompt_memory_rules=lambda *_a, **_k: "",
+    )
+    _module("nana.runtime.logger", log_event=lambda *_a, **_k: None)
+    _module(
+        "nana.runtime.affect_lane",
+        format_affect_prompt_block=lambda *_a, **_k: "",
+        project_affect=lambda *_a, **_k: _Affect(),
+    )
+    _module("nana.runtime.persona", persona_prompt_block=lambda *_a, **_k: "")
+    _module(
+        "nana.runtime.llm_private_fast_lane",
+        build_fast_private_messages=_forbidden("fast prompt"),
+        classify_private_fast_lane=lambda *_a, **_k: types.SimpleNamespace(eligible=False),
+        prompt_char_count=lambda *_a, **_k: 0,
+        record_fast_lane_decision=lambda *_a, **_k: None,
+        record_fast_lane_result=lambda *_a, **_k: None,
+        validate_fast_private_reply=lambda value: value,
+    )
+    _module(
+        "nana.voice.inline_audio_tags",
+        ELEVEN_V3_INLINE_AUDIO_TAG_COMPACT_GUIDE="",
+        ELEVEN_V3_INLINE_AUDIO_TAG_GUIDE="",
+        KNOWN_INLINE_AUDIO_TAG_RE=re.compile(r"$^"),
+        repair_malformed_inline_audio_tags=lambda value: value,
+        strip_inline_audio_tags=lambda value: value,
+    )
+    _module("nana.runtime.mood_continuity", format_mood_prompt_block=lambda *_a: "", observe_mood_text=lambda *_a: None)
+    _module("nana.runtime.persona_spine", generate_spine_block=lambda *_a: "")
+    _module("nana.runtime.core_self", generate_core_self_block=lambda *_a: "", get_core_self=lambda: None)
+    _module(
+        "nana.runtime.memory_grounding",
+        MemoryEvidence=object,
+        ConfidenceInjector=object,
+        ConfidenceVerifier=object,
+        VerificationResult=object,
+        ground_user_message=lambda *_a, **_k: None,
+        verify_reply=lambda *_a, **_k: None,
+        verify_public_response=lambda *_a, **_k: {"accepted": True},
+    )
+    _module(
+        "nana.runtime.social_session",
+        get_social_session=lambda: types.SimpleNamespace(
+            _topic_stack=[], format_public_room_context=lambda *_a, **_k: ""
+        ),
+    )
+    _module("nana.runtime.avatar_reply_turn", daily_reaction_prompt=lambda: "")
 
 
 def _test_core_llmgate_models_are_upgraded():
@@ -38,13 +201,49 @@ def _test_llmgate_aliases_resolve_without_api_call():
     print("[LLMGate Routing] Test 2: logical aliases resolve without API calls...")
     from nana.brain.llmgate_client import _candidate_model_names
 
-    assert _candidate_model_names("nana-main")[-1] == "gemini-3-flash"
-    assert _candidate_model_names("nana-chat")[-1] == "gemini-3-flash"
-    assert _candidate_model_names("nana-public")[-1] == "gpt-5.4-mini"
-    assert _candidate_model_names("nana-banter")[-1] == "gpt-5.4-mini"
-    assert _candidate_model_names("nana-refiner")[-1] == "gpt-5.5"
-    assert _candidate_model_names("nana-reasoning")[-1] == "gpt-5.4"
+    aliases = {
+        "NANA_LLM_ALIAS_MAIN": "gemini-3-flash",
+        "NANA_LLM_ALIAS_CHAT": "gemini-3-flash",
+        "NANA_LLM_ALIAS_PUBLIC": "gemini-3-flash",
+        "NANA_LLM_ALIAS_BANTER": "gpt-5.4-mini",
+        "NANA_LLM_ALIAS_REFINER": "gpt-5.5",
+        "NANA_LLM_ALIAS_REASONING": "gpt-5.4",
+    }
+    with patch.dict(os.environ, aliases):
+        assert _candidate_model_names("nana-main")[-1] == "gemini-3-flash"
+        assert _candidate_model_names("nana-chat")[-1] == "gemini-3-flash"
+        assert _candidate_model_names("nana-public")[-1] == "gemini-3-flash"
+        assert _candidate_model_names("nana-banter")[-1] == "gpt-5.4-mini"
+        assert _candidate_model_names("nana-refiner")[-1] == "gpt-5.5"
+        assert _candidate_model_names("nana-reasoning")[-1] == "gpt-5.4"
     print("  PASSED")
+
+
+def _ask_public_without_owner_reads(gpt, boundary, text):
+    with (
+        patch.object(
+            gpt,
+            "_lane_first_inputs",
+            lambda **_kwargs: (
+                boundary,
+                {},
+                {},
+                {"affection": 0.5, "annoyance": 0.0, "playfulness": 0.5},
+            ),
+        ),
+        patch.object(gpt, "_is_canonical_private_context", lambda *_args: False),
+        patch.object(
+            gpt,
+            "_public_grounding_decision_for_turn",
+            lambda *_args, **_kwargs: None,
+        ),
+        patch.object(
+            gpt,
+            "_public_cross_session_query_eligible",
+            lambda *_args, **_kwargs: False,
+        ),
+    ):
+        return gpt.ask_gpt(text, viewer_name="linhcute2746", stream_mode=True)
 
 
 def _test_sidecar_router_uses_upgraded_models():
@@ -75,7 +274,7 @@ def _test_public_lane_uses_chat_model_and_local_model_topic_reply():
     assert gpt.llmgate_model_for_boundary(private) == "gemini-3-flash"
     assert gpt._is_public_model_topic("5.6 mạnh không nana") is True
 
-    reply = gpt.ask_gpt("5.6 mạnh không nana", viewer_name="linhcute2746", stream_mode=True)
+    reply = _ask_public_without_owner_reads(gpt, public, "5.6 mạnh không nana")
     lowered = reply.lower()
     assert "nana" in lowered, reply
     assert any(marker in lowered for marker in ("model", "5.6", "mạch", "nhịp", "tự nhiên", "bảng")), reply
@@ -286,8 +485,10 @@ def _test_public_short_quiet_room_routes_deterministically():
     print("[LLMGate Routing] Test 5A: public quiet-room routing is deterministic and local...")
     import nana.brain.gpt as gpt
     import nana.runtime.public_voice_style as public_voice_style
+    from nana.runtime.persona_boundary import resolve_persona_boundary
 
     prompt = "phòng nay im quá"
+    public = resolve_persona_boundary(viewer_name="linhcute2746", stream_mode=True)
     fixed_time_ns = 123456789
     expected_seed = f"quiet:{prompt}:{fixed_time_ns}"
     expected = public_voice_style.choose_variant(
@@ -307,11 +508,7 @@ def _test_public_short_quiet_room_routes_deterministically():
 
         gpt.create_chat_completion_with_fallback = fail_if_provider_called
         assert gpt._is_public_short_quiet_room_prompt(prompt) is True
-        reply = gpt.ask_gpt(
-            prompt,
-            viewer_name="linhcute2746",
-            stream_mode=True,
-        )
+        reply = _ask_public_without_owner_reads(gpt, public, prompt)
     finally:
         public_voice_style._PUBLIC_VOICE_STYLE = old_style
         gpt.time.time_ns = old_time_ns
@@ -364,6 +561,25 @@ def _test_public_quiet_room_seeded_quality_contract():
 
 
 def run_all() -> int:
+    missing = object()
+    openai_before = sys.modules.get("openai", missing)
+    _install_isolated_dependencies()
+    import nana.brain.llmgate_client as client
+
+    synthetic_settings = {
+        "customModels": [
+            {
+                "model": "fixture-base-model",
+                "displayName": "fixture-base-model",
+                "apiKey": "fixture-key",
+                "baseUrl": "https://llmgate.invalid/v1",
+            }
+        ]
+    }
+    original_settings_loader = client.load_llmgate_settings
+    original_post = client._http_post
+    client.load_llmgate_settings = lambda: synthetic_settings
+    client._http_post = _forbidden("network")
     print("=" * 60)
     print("LLMGate Model Routing — Smoke Tests")
     print("=" * 60)
@@ -381,12 +597,20 @@ def run_all() -> int:
         _test_stream_payload_only_adds_effort_for_private_main,
     ]
     failed = 0
-    for test in tests:
-        try:
-            test()
-        except Exception as exc:
-            failed += 1
-            print(f"  FAILED: {type(exc).__name__}: {exc}")
+    try:
+        for test in tests:
+            try:
+                test()
+            except Exception as exc:
+                failed += 1
+                print(f"  FAILED: {type(exc).__name__}: {exc}")
+    finally:
+        client.load_llmgate_settings = original_settings_loader
+        client._http_post = original_post
+        if openai_before is missing:
+            sys.modules.pop("openai", None)
+        else:
+            sys.modules["openai"] = openai_before
     passed = len(tests) - failed
     print("=" * 60)
     print(f"Results: {passed} passed, {failed} failed")

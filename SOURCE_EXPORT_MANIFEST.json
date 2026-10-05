@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "snapshot_date": "2026-09-28",
-  "scope": "credential-free runnable Nana Core plus source-only optional components",
+  "snapshot_date": "2026-10-06",
+  "scope": "credential-free source snapshot: Nana Core, optional components and sanitized architecture",
   "excluded": [
     "credentials and .env files",
     "private memory, chat history, runtime logs and captures",
@@ -12,9 +12,171 @@
   "files": [
     {
       "path": ".env.example",
-      "source": "nana-core-template",
-      "bytes": 2372,
-      "sha256": "2445c599917066b2d56a6389cb24c08a80b7f0b5eb8932aae6c37d4fdd4a0154"
+      "source": "public-template-or-document",
+      "bytes": 3102,
+      "sha256": "d0d83b93fd2a2b6a5cbe41069c8c41fb90631d6c6c7d984548e4776eff97849f"
+    },
+    {
+      "path": ".gitattributes",
+      "source": "public-template-or-document",
+      "bytes": 45,
+      "sha256": "87df766fcf3fde50cbe324c4f95dfd97bcf5399b3a5a5de92d9d880a90f3192a"
+    },
+    {
+      "path": ".gitignore",
+      "source": "public-template-or-document",
+      "bytes": 1398,
+      "sha256": "bc133d127fef1c343af36c9678b0e03f934764e39948f588eb278f340a80862c"
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "source": "public-template-or-document",
+      "bytes": 799,
+      "sha256": "d2fb71d86fe55bad08038443abaff4a9f36b16e6e80716a9d26e608088339922"
+    },
+    {
+      "path": "NANA_3D_AVATAR_STATE.md",
+      "source": "canonical-architecture",
+      "bytes": 11864,
+      "sha256": "a624311b4bf9a2e8c778ddd29a7a9e2e66a8c6f16daa53b3d1d86ee27615a58c"
+    },
+    {
+      "path": "NANA_ARCHITECTURE_CORE.md",
+      "source": "canonical-architecture",
+      "bytes": 40231,
+      "sha256": "8660d528424f0caf4739039f9d0420cb096caca6b63cd6ae4ab3fed0b6edba97"
+    },
+    {
+      "path": "NANA_ARCHITECTURE_VISION.md",
+      "source": "canonical-architecture",
+      "bytes": 5410,
+      "sha256": "c7ca710df6029075876f5e94875f45249a3c7860c459adff4677d6de6523ad36"
+    },
+    {
+      "path": "NANA_AUTONOMY_DESIGN.md",
+      "source": "canonical-architecture",
+      "bytes": 95945,
+      "sha256": "40b6b02698736a34ae25b05eee3692524fd0b3b117b2b1b95fd16e59d2fc201c"
+    },
+    {
+      "path": "NANA_B6_FINAL_WIRING.md",
+      "source": "canonical-architecture",
+      "bytes": 6299,
+      "sha256": "24eb022efd0e673cc6235b4bfb631e22755a29a20d60c6d42911db92340874bf"
+    },
+    {
+      "path": "NANA_B6_WIRING_DIAGRAM.png",
+      "source": "public-template-or-document",
+      "bytes": 252653,
+      "sha256": "fc25ef10d3a282440c94035974189bdb33923b46a53b6c3f30e7fc5f06566b17"
+    },
+    {
+      "path": "NANA_B6_WIRING_DIAGRAM.svg",
+      "source": "public-template-or-document",
+      "bytes": 13796,
+      "sha256": "e75e4debf63473e95725362f4995887ac9397d8c816764fc7cce5cbb2ccb537e"
+    },
+    {
+      "path": "NANA_CURRENT_CODE_TRUTH.md",
+      "source": "canonical-architecture",
+      "bytes": 47249,
+      "sha256": "7e84f6b8b9bc001d7553c9e00c5e6b465633498063fb180feeb447774d3ff000"
+    },
+    {
+      "path": "NANA_DISCORD_INTEGRATION_STATE.md",
+      "source": "canonical-architecture",
+      "bytes": 17859,
+      "sha256": "dc1f6940a4dbd0a8e675a97ffaec5ce161e105a4d66a37b936ea29d19c9919c8"
+    },
+    {
+      "path": "NANA_GAME_CAPABILITY_FREEZE_STATE.md",
+      "source": "canonical-architecture",
+      "bytes": 3890,
+      "sha256": "751577e3904b081539970adea7f0bd8a20430eeba08f3d1bcaca1d986d180d22"
+    },
+    {
+      "path": "NANA_PRESENCE_NODE_STATE.md",
+      "source": "canonical-architecture",
+      "bytes": 52707,
+      "sha256": "7bb113352142e2b3ba4b3c3053a091fb54fabedfe6517b04f852be768a6c7be4"
+    },
+    {
+      "path": "NANA_PRESENCE_XIAOZHI_ARCHITECTURE_REVIEW.md",
+      "source": "canonical-architecture",
+      "bytes": 19404,
+      "sha256": "b92b8113a793b42c5b7f729adb929aaad56eeb6d98e711f8e416bd616758bdc9"
+    },
+    {
+      "path": "NANA_RUNTIME_REWIRE_STATE.md",
+      "source": "canonical-architecture",
+      "bytes": 9920,
+      "sha256": "e3f4b1d32341a923603d925ff45beef03925f8c0e38f6e19b2292b1003d75110"
+    },
+    {
+      "path": "NANA_SINGING_VOICE_RESEARCH.md",
+      "source": "canonical-architecture",
+      "bytes": 18748,
+      "sha256": "34fa0f3eaf000fd51f6d04d8c819d4b1f71dfeb55e50475abc056ec82142ede8"
+    },
+    {
+      "path": "NANA_STARDEW_ADAPTER_V2_SPEC.md",
+      "source": "canonical-architecture",
+      "bytes": 20188,
+      "sha256": "102422c74f960f2651929819265c9abe98dcd6333b3c3605815a157a22d5b135"
+    },
+    {
+      "path": "NANA_STARDEW_RESEARCH_INTEGRATION_STATE.md",
+      "source": "canonical-architecture",
+      "bytes": 5347,
+      "sha256": "e23f0f9d9afb994c50489c7e0ceb42a82e429bd6b76abc761346b6815f61a667"
+    },
+    {
+      "path": "NanaBridge/ModEntry.cs",
+      "source": "public-template-or-document",
+      "bytes": 62636,
+      "sha256": "62e666e422aed504777483706cd35a4004df1628cb770e16aa490648732e46a6"
+    },
+    {
+      "path": "NanaBridge/NanaBridge.csproj",
+      "source": "public-template-or-document",
+      "bytes": 1302,
+      "sha256": "98060858a7572ea4408a804a845280c9b2c82427a98793981060590584813402"
+    },
+    {
+      "path": "NanaBridge/manifest.json",
+      "source": "public-template-or-document",
+      "bytes": 241,
+      "sha256": "303b61a57d8c7c6391aa0febbc67b0e340c146976cd2bbdcbe8238554fe8bb81"
+    },
+    {
+      "path": "PUBLIC_EXPORT_MANIFEST.md",
+      "source": "public-template-or-document",
+      "bytes": 5689,
+      "sha256": "2c06014331a9eecf9addc1932cdc335e48d763e4c93cf64515979ce7a890331c"
+    },
+    {
+      "path": "README.md",
+      "source": "public-template-or-document",
+      "bytes": 4464,
+      "sha256": "5faa50f078b62015e1e646f8b28cb0d923bfd5dcd06c1ea7f4f7575b38fdd3da"
+    },
+    {
+      "path": "RUNTIME.md",
+      "source": "public-template-or-document",
+      "bytes": 5510,
+      "sha256": "a261000e6c52639574c9d09997935a3db6e99cdc1a5a46e2593fb5b30bfa91f0"
+    },
+    {
+      "path": "SECURITY.md",
+      "source": "public-template-or-document",
+      "bytes": 491,
+      "sha256": "0eceaa1479b4cc0dacc8ef819cf0b59d6475010cfd4473926a6af4c929f79a2d"
+    },
+    {
+      "path": "components/README.md",
+      "source": "public-template-or-document",
+      "bytes": 461,
+      "sha256": "3e52edd503a095585358b430474147aef1a4cd4f7c1cd510944b63041e84f615"
     },
     {
       "path": "components/avatar-unity-scripts/Assets/Editor/ValidateNanaCandidate.cs",
@@ -67,8 +229,8 @@
     {
       "path": "components/avatar-unity-scripts/Assets/Nana/Runtime/NanaTargetDrivenAvatarController.cs",
       "source": "avatar-unity-code",
-      "bytes": 30348,
-      "sha256": "514b0d943873d64a6efb7a3ea9d8370273efed711d6ade051e35adc2a9f03332"
+      "bytes": 30523,
+      "sha256": "57f8da2562069b882e1d93c3ec3c5b50128b3873d72c4926522c70ac00a2efa2"
     },
     {
       "path": "components/avatar-unity-scripts/Assets/NanaWeb/Editor/NanaFaceCatalogBuild.cs",
@@ -109,8 +271,8 @@
     {
       "path": "components/avatar-unity-scripts/Assets/NanaWeb/Editor/NanaWebBuild.cs",
       "source": "avatar-unity-code",
-      "bytes": 23650,
-      "sha256": "1f834d349f6a364c042ff4257fdda0f470c76f340c145604e3433690f8e8547d"
+      "bytes": 24186,
+      "sha256": "b4d3400848a9b5cf2ce6228942fc273e76fa59b687388e511079c15c4a1acde4"
     },
     {
       "path": "components/avatar-unity-scripts/Assets/NanaWeb/Editor/NanaWebMaterialAudit.cs",
@@ -138,7 +300,7 @@
     },
     {
       "path": "components/avatar-unity-scripts/README.md",
-      "source": "generated-public-runtime",
+      "source": "public-template-or-document",
       "bytes": 429,
       "sha256": "124c690753e185a37e98fceb146b48b02d1152abcadbdfec59902a9cba4aea0a"
     },
@@ -180,15 +342,21 @@
     },
     {
       "path": "components/discord-bridge/.env.example",
-      "source": "discord-bridge+public-portability-patch",
+      "source": "public-template-or-document",
       "bytes": 803,
       "sha256": "259c2d7f23dd53358f54b20d4b4c925a570253341a326a23177214dd08636a81"
     },
     {
       "path": "components/discord-bridge/.gitignore",
-      "source": "discord-bridge",
+      "source": "public-template-or-document",
       "bytes": 24,
       "sha256": "d8f97d7d9d0c727b9b92aa9559b0a693beaa51ac33fa58e09ff136127ee72c9e"
+    },
+    {
+      "path": "components/discord-bridge/README.md",
+      "source": "public-template-or-document",
+      "bytes": 5543,
+      "sha256": "cd17b3ccb90bc3f745a87d7e3d961f27fc4eda838d70778dc00eecc79d4887ed"
     },
     {
       "path": "components/discord-bridge/nana_discord_bridge/__init__.py",
@@ -251,34 +419,184 @@
       "sha256": "1c5dae1c1501fdf7e0a72cbc6da8c1627add18b31c026b0a9a63dd9ede68afce"
     },
     {
-      "path": "components/discord-bridge/README.md",
-      "source": "discord-bridge",
-      "bytes": 5543,
-      "sha256": "cd17b3ccb90bc3f745a87d7e3d961f27fc4eda838d70778dc00eecc79d4887ed"
-    },
-    {
       "path": "components/discord-bridge/requirements.txt",
-      "source": "discord-bridge",
+      "source": "public-template-or-document",
       "bytes": 62,
       "sha256": "207d9a17c3fd47106de225ffdf63bf6b7936d7cece27a628b2fe6c1bec7264af"
     },
     {
       "path": "components/discord-bridge/routes.example.json",
-      "source": "discord-bridge",
+      "source": "public-template-or-document",
       "bytes": 459,
       "sha256": "a62e2dd363e4f8ad33938d49b7b5279251233a7b30c9775aee9051d5ae87f02d"
     },
     {
       "path": "components/discord-bridge/run_bot.py",
-      "source": "discord-bridge",
+      "source": "public-template-or-document",
       "bytes": 79,
       "sha256": "035aa3a32269701a4e006d92b72051f4fc7bd4bb173dd1b6b505eb60281cf823"
+    },
+    {
+      "path": "components/nana-app/README.md",
+      "source": "public-template-or-document",
+      "bytes": 1768,
+      "sha256": "721ae32c82cea512278820da558fa4231de1eb386dcb944589f229aab2033f9f"
+    },
+    {
+      "path": "components/nana-app/index.html",
+      "source": "nana-app",
+      "bytes": 17808,
+      "sha256": "03026222d7683089eee3d3466b2d2ed14098968e5bea5b5de4815226a85cfb57"
+    },
+    {
+      "path": "components/nana-app/obs.html",
+      "source": "nana-app",
+      "bytes": 540,
+      "sha256": "fcb6627a8f556a9e9c86cb26722c063e2d69595a500fd1182dba6cb011a7b4f4"
+    },
+    {
+      "path": "components/nana-app/package-lock.json",
+      "source": "nana-app",
+      "bytes": 25668,
+      "sha256": "9340b76eccfcd7e81ba493f9e135f46d035efec45b79e2f8e421f0d63cf04769"
+    },
+    {
+      "path": "components/nana-app/package.json",
+      "source": "nana-app",
+      "bytes": 405,
+      "sha256": "047fe87aabe35f61b333399cf789eca694878fbabf3096d5aa38d4cb22bc9a8d"
+    },
+    {
+      "path": "components/nana-app/src/conversationController.js",
+      "source": "nana-app",
+      "bytes": 4732,
+      "sha256": "a828120ad6ddcec6335efb726e3d527f35ed74ff4f6eac1e4e9343508a25574f"
+    },
+    {
+      "path": "components/nana-app/src/coreChatProtocol.js",
+      "source": "nana-app",
+      "bytes": 9150,
+      "sha256": "02886bdcd74378a5643be592d3d5b999dfc67653be084d4aa2e2fa9683fae5ef"
+    },
+    {
+      "path": "components/nana-app/src/coreChatTransport.js",
+      "source": "nana-app",
+      "bytes": 12183,
+      "sha256": "c9de0b7c19c12b0193a051e04cde552b39ce0d8fea0767d72f084d750c7319ff"
+    },
+    {
+      "path": "components/nana-app/src/main.js",
+      "source": "nana-app",
+      "bytes": 34732,
+      "sha256": "d956d2ffd4f2bc727a63a66a18e1fed29cbd7b409b253113ff59859f6bbc0f60"
+    },
+    {
+      "path": "components/nana-app/src/obs.css",
+      "source": "nana-app",
+      "bytes": 549,
+      "sha256": "0a960aaba2765ede69a81e7efc929e1138057a4804478bc2b2893205589af3fd"
+    },
+    {
+      "path": "components/nana-app/src/obs.js",
+      "source": "nana-app",
+      "bytes": 5400,
+      "sha256": "d03e02c8f9682e3218df73ed8173ddabb00f425e010c252f8b0d0bccd415a240"
+    },
+    {
+      "path": "components/nana-app/src/obsConfig.js",
+      "source": "nana-app",
+      "bytes": 1656,
+      "sha256": "a1a0874c63d6b3ca6e28992362f62df83c74e462b5d1c2c8db35d16fc992726b"
+    },
+    {
+      "path": "components/nana-app/src/obsSignals.js",
+      "source": "nana-app",
+      "bytes": 12783,
+      "sha256": "d03c24bc90214a0d99b48af9a2575194aacb52b0e13fd0d152bf28b37af9dc50"
+    },
+    {
+      "path": "components/nana-app/src/privateAvatarSignals.js",
+      "source": "nana-app",
+      "bytes": 8186,
+      "sha256": "5bbd526333accc101aeab104d3eab9aa28d51cd0fa746a58b3dcee7d1231ec31"
+    },
+    {
+      "path": "components/nana-app/src/style.css",
+      "source": "nana-app",
+      "bytes": 19262,
+      "sha256": "857b39794458626ffd30e22020973995641adc64b172af257ada0478f441df48"
+    },
+    {
+      "path": "components/nana-app/tests/conversationController.test.js",
+      "source": "nana-app",
+      "bytes": 3435,
+      "sha256": "27ee19ceef200570ae64c3f3fa0502158be803f6621be22c51f81a114fceb8bf"
+    },
+    {
+      "path": "components/nana-app/tests/coreChatLoopback.mjs",
+      "source": "nana-app",
+      "bytes": 3027,
+      "sha256": "86a96dc2c2e1286abbfe5296b11653b525836f49a6b65068e06e66355cc64cfb"
+    },
+    {
+      "path": "components/nana-app/tests/coreChatProtocol.test.js",
+      "source": "nana-app",
+      "bytes": 7355,
+      "sha256": "9e1d665e9c1ec47c62d1152acb48cb8b634c8a7e15d99def4b6a7ed1009b92c3"
+    },
+    {
+      "path": "components/nana-app/tests/coreChatTransport.test.js",
+      "source": "nana-app",
+      "bytes": 10107,
+      "sha256": "e0f587cbbea8d954d46e10057b70dc5103766b33802ba93758665088281a31a4"
+    },
+    {
+      "path": "components/nana-app/tests/entryIsolation.test.js",
+      "source": "nana-app",
+      "bytes": 864,
+      "sha256": "fa54ec4f015d9c136d6643d6fbf79cb9cd7b8a9848f6ff24c3765f150e7c107d"
+    },
+    {
+      "path": "components/nana-app/tests/obsConfig.test.js",
+      "source": "nana-app",
+      "bytes": 1372,
+      "sha256": "62077f8d68b1504c165a0d606f2ef36e4a3c4083e883bdf7e6f2cab34cfda844"
+    },
+    {
+      "path": "components/nana-app/tests/obsSignals.test.js",
+      "source": "nana-app",
+      "bytes": 19647,
+      "sha256": "c62d36e7850210e5f6636f9b60d4dafb915506d845c2c3938dc6a5c2d4fdead6"
+    },
+    {
+      "path": "components/nana-app/tests/privateAvatarLoopback.mjs",
+      "source": "nana-app",
+      "bytes": 3113,
+      "sha256": "71045d832c6e561febb08b174087098a906cfe17dd59f58eace1f284b78f2956"
+    },
+    {
+      "path": "components/nana-app/tests/privateAvatarSignals.test.js",
+      "source": "nana-app",
+      "bytes": 8431,
+      "sha256": "292a488845860d8eb1a289ea4c907b2f97e9ac3fe8dc1b18feb3692fd5d5d02e"
+    },
+    {
+      "path": "components/nana-app/vite.config.js",
+      "source": "nana-app",
+      "bytes": 728,
+      "sha256": "bb35f083f9a6d5bb5318c413118fa6ebdc9e9e8b5da233dd9f252650dd508c32"
     },
     {
       "path": "components/presence-node/CMakeLists.txt",
       "source": "presence-node",
       "bytes": 116,
       "sha256": "6ee1d1b6d082ec8e681df8f14568b353b3e2bf78471f5df4e8f9d7dc03f8212b"
+    },
+    {
+      "path": "components/presence-node/README.md",
+      "source": "presence-node",
+      "bytes": 23859,
+      "sha256": "78d8e24f6362ed5358e42475547832956d5b0a69c28d67ddc25a6cf71e1ec48c"
     },
     {
       "path": "components/presence-node/dependencies.lock",
@@ -299,6 +617,12 @@
       "sha256": "11005fc0b9cfa3117f9733a4a22e62661cdf1ff483fa328f60c9d95849715190"
     },
     {
+      "path": "components/presence-node/main/CMakeLists.txt",
+      "source": "presence-node",
+      "bytes": 788,
+      "sha256": "0697db6decf92034abf04f2239612ab7509af3ee23f8d9fd51a2a8c7eaf1cc37"
+    },
+    {
       "path": "components/presence-node/main/app_main.c",
       "source": "presence-node",
       "bytes": 16293,
@@ -306,15 +630,9 @@
     },
     {
       "path": "components/presence-node/main/assets/nana_voice_test.pcm",
-      "source": "generated-synthetic-fixture",
+      "source": "public-template-or-document",
       "bytes": 32000,
       "sha256": "637afe758cdca91029d2783275e7f347f5ff3ddec5c325b12d8073a9bebad90f"
-    },
-    {
-      "path": "components/presence-node/main/CMakeLists.txt",
-      "source": "presence-node",
-      "bytes": 788,
-      "sha256": "0697db6decf92034abf04f2239612ab7509af3ee23f8d9fd51a2a8c7eaf1cc37"
     },
     {
       "path": "components/presence-node/main/idf_component.yml",
@@ -329,18 +647,6 @@
       "sha256": "9be40cd71a242dc53a684894370963381eef1c04fb33763c7dbb8f33392b2c7a"
     },
     {
-      "path": "components/presence-node/main/nana_camera_http.c",
-      "source": "presence-node",
-      "bytes": 15877,
-      "sha256": "7cbd8178cd1fe298901107aa75d9d1dda468d06cdd9e62d48eac21d012c7aa3d"
-    },
-    {
-      "path": "components/presence-node/main/nana_camera_http.h",
-      "source": "presence-node",
-      "bytes": 159,
-      "sha256": "3acb2b3e44a2240dedc81561fa59511bff36f131fe1a771e5415f7b542e8133c"
-    },
-    {
       "path": "components/presence-node/main/nana_camera.c",
       "source": "presence-node",
       "bytes": 13210,
@@ -351,6 +657,18 @@
       "source": "presence-node",
       "bytes": 568,
       "sha256": "c3879e8417cf73573405fde71f94a47d14dfbd41f8c86c5ccfa3d662faeb2ff9"
+    },
+    {
+      "path": "components/presence-node/main/nana_camera_http.c",
+      "source": "presence-node",
+      "bytes": 15877,
+      "sha256": "7cbd8178cd1fe298901107aa75d9d1dda468d06cdd9e62d48eac21d012c7aa3d"
+    },
+    {
+      "path": "components/presence-node/main/nana_camera_http.h",
+      "source": "presence-node",
+      "bytes": 159,
+      "sha256": "3acb2b3e44a2240dedc81561fa59511bff36f131fe1a771e5415f7b542e8133c"
     },
     {
       "path": "components/presence-node/main/nana_display.c",
@@ -447,12 +765,6 @@
       "source": "presence-node",
       "bytes": 290,
       "sha256": "2c839d9b1e6387cb85228c028e98c51a23858a5ed1f8f9432297586b445bfdac"
-    },
-    {
-      "path": "components/presence-node/README.md",
-      "source": "presence-node",
-      "bytes": 23859,
-      "sha256": "78d8e24f6362ed5358e42475547832956d5b0a69c28d67ddc25a6cf71e1ec48c"
     },
     {
       "path": "components/presence-node/sdkconfig.defaults",
@@ -557,12 +869,6 @@
       "sha256": "ca2498a356dd15f3a9f4dd259fbf8e827dcefebaad124be0b1ef18d17a1fb83c"
     },
     {
-      "path": "components/README.md",
-      "source": "generated-public-runtime",
-      "bytes": 389,
-      "sha256": "86ce749d5551076842956c2e448b27fc3ff00a4367e12b4a21bd91e9f41e7780"
-    },
-    {
       "path": "nana/__init__.py",
       "source": "nana-core",
       "bytes": 2051,
@@ -636,7 +942,7 @@
     },
     {
       "path": "nana/assets/models/README.md",
-      "source": "nana-core",
+      "source": "public-template-or-document",
       "bytes": 445,
       "sha256": "48743d5673fd701986bb4f8083b290ed54de49cb34a811d7d70e8c77e7eb46e3"
     },
@@ -673,8 +979,8 @@
     {
       "path": "nana/autonomy/llm_banter.py",
       "source": "nana-core",
-      "bytes": 13488,
-      "sha256": "646f4e0e3d2a3f8eb8ddb4e62e503dd1c91711692ea55568c1fd9dcdbb9e9a01"
+      "bytes": 19063,
+      "sha256": "7ee936ec05e34c870101f90cb410863ebaf53dec252ac2b5fb61b12596c18731"
     },
     {
       "path": "nana/autonomy/lock.py",
@@ -685,14 +991,14 @@
     {
       "path": "nana/autonomy/loop.py",
       "source": "nana-core",
-      "bytes": 20460,
-      "sha256": "dccd2c825997feef6b824589d3891aa4567b15a30c571a6e172183cfcfc0e9f7"
+      "bytes": 22998,
+      "sha256": "438fd6b5678c6c7937746d5cc9806c2c93f5eb6a0aa7669be366c8c9c482c6dc"
     },
     {
       "path": "nana/autonomy/observer.py",
       "source": "nana-core",
-      "bytes": 10840,
-      "sha256": "f7403ac1c4562cf7284d576cc3ad126270f8d2f5b092a350b0cd897d3ab4c0f8"
+      "bytes": 14626,
+      "sha256": "cfda4570ff33e11d7946c38db4f0e7e0e8c6f8b30e80ab1a5981f559bd6c15a0"
     },
     {
       "path": "nana/autonomy/templates/__init__.py",
@@ -745,14 +1051,14 @@
     {
       "path": "nana/brain/gpt.py",
       "source": "nana-core",
-      "bytes": 124908,
-      "sha256": "c5f9d52cc1a9075d85e486ce7346ae40042cd99ce0e57e67809d7466dc602702"
+      "bytes": 151465,
+      "sha256": "511dc6f5dd75de970356738d63a70f645322a01683245651b9cc763dfbf95a10"
     },
     {
       "path": "nana/brain/llmgate_client.py",
       "source": "nana-core",
-      "bytes": 20090,
-      "sha256": "9d11585f6fc27e09ff405eef1df93b7e93d6425cbc278673c91d83abd63f4b8d"
+      "bytes": 43351,
+      "sha256": "5fc95e14fe3a51848cda1fb0a96dafe46a36dc1df94b9fe1ffafd855f69c7716"
     },
     {
       "path": "nana/brain/local_helper.py",
@@ -765,6 +1071,12 @@
       "source": "nana-core",
       "bytes": 4926,
       "sha256": "85916178672194547a35cc408ffaaf7d0c213d70f30beb30cf0ec60153e72cbb"
+    },
+    {
+      "path": "nana/brain/openai_direct_client.py",
+      "source": "nana-core",
+      "bytes": 14664,
+      "sha256": "06d3e360b306cc52083403c7d7e0fbcfbc6a7f14dccc0d7ef97fa76ac41a7cff"
     },
     {
       "path": "nana/brain/priority.py",
@@ -827,16 +1139,16 @@
       "sha256": "206440072a1584d4cbf3b86d3bb52fc1c77fa27aeea9bb3e42a5d4298dee8810"
     },
     {
-      "path": "nana/cli/action_diagnostic_commands_impl.py",
-      "source": "nana-core+public-portability-patch",
-      "bytes": 16888,
-      "sha256": "4bfd282533fbb459e9eac3c2715edf55b6326427a452dd667ff23127bfcfd2a3"
-    },
-    {
       "path": "nana/cli/action_diagnostic_commands.py",
       "source": "nana-core",
       "bytes": 679,
       "sha256": "6b0c91c4ba720419e6c257beb25eadd284f15809edf5e3a503759addb33c886b"
+    },
+    {
+      "path": "nana/cli/action_diagnostic_commands_impl.py",
+      "source": "nana-core",
+      "bytes": 16888,
+      "sha256": "4bfd282533fbb459e9eac3c2715edf55b6326427a452dd667ff23127bfcfd2a3"
     },
     {
       "path": "nana/cli/adapter_commands.py",
@@ -853,8 +1165,8 @@
     {
       "path": "nana/cli/app.py",
       "source": "nana-core",
-      "bytes": 35617,
-      "sha256": "ab70385e51d9f7c86c9687f1093c538a30d5b23a8508908a460499377bfb94f2"
+      "bytes": 39801,
+      "sha256": "d795faaa4365334057aaef51739e0288b04ef028096fcaae5243cd56a05e9003"
     },
     {
       "path": "nana/cli/autonomy_command.py",
@@ -883,8 +1195,8 @@
     {
       "path": "nana/cli/chat_turn_pipeline.py",
       "source": "nana-core",
-      "bytes": 29590,
-      "sha256": "b9fde667f4c804156dd017d6c1f5d39d6c8944fb6239544f4e7a1281b08d6cae"
+      "bytes": 39452,
+      "sha256": "fb47b3b925b8188ff27bdd22eae3e6085b9607a59cd6c541f49dc82046bc6ddc"
     },
     {
       "path": "nana/cli/core_identity_commands.py",
@@ -899,16 +1211,16 @@
       "sha256": "3df54ad02006a57cae24834029732cc6cea732c80921af63c6644ec48ddb7453"
     },
     {
-      "path": "nana/cli/core_phase_commands_impl.py",
-      "source": "nana-core",
-      "bytes": 95238,
-      "sha256": "a11e6b2ff23910e74c6293804760b77fdac6971a6e4f3b10dc06d30525a84615"
-    },
-    {
       "path": "nana/cli/core_phase_commands.py",
       "source": "nana-core",
       "bytes": 870,
       "sha256": "d66b00f913cb0807414d87be1869aa2c4299d2da185dd1b44d6e53809b72000d"
+    },
+    {
+      "path": "nana/cli/core_phase_commands_impl.py",
+      "source": "nana-core",
+      "bytes": 95238,
+      "sha256": "a11e6b2ff23910e74c6293804760b77fdac6971a6e4f3b10dc06d30525a84615"
     },
     {
       "path": "nana/cli/globals.py",
@@ -919,8 +1231,8 @@
     {
       "path": "nana/cli/handle_text.py",
       "source": "nana-core",
-      "bytes": 6594,
-      "sha256": "415bd0589f693f0800863cc58d8440986bc49e27b34806fe420cd1d41a42f1e0"
+      "bytes": 6745,
+      "sha256": "aa52a402f6d52d15f423f109e1164d9ab7494ad823d3ebff105f78445fcec5f2"
     },
     {
       "path": "nana/cli/identity_command.py",
@@ -948,7 +1260,7 @@
     },
     {
       "path": "nana/cli/memory_commands.py",
-      "source": "nana-core+public-portability-patch",
+      "source": "nana-core",
       "bytes": 5184,
       "sha256": "7c5374e7ea69a955c54e88c575cbc0437cc96c39ea24d8661dde869570b2fa1a"
     },
@@ -965,16 +1277,16 @@
       "sha256": "d2073a51bcb5898b4ef94baade8de8865a6928fb4bb3eb9cfdfed198abe4b283"
     },
     {
-      "path": "nana/cli/phase_compat_commands_impl.py",
-      "source": "nana-core",
-      "bytes": 36027,
-      "sha256": "9ff1ebf7ced7ca515f68609822cce59e610084386b8c1565cbff53f945f28395"
-    },
-    {
       "path": "nana/cli/phase_compat_commands.py",
       "source": "nana-core",
       "bytes": 709,
       "sha256": "ac6448b53f8be2803c8884a311ed64b7b4c9cbbe538257298cb9e02cfdbccdcc"
+    },
+    {
+      "path": "nana/cli/phase_compat_commands_impl.py",
+      "source": "nana-core",
+      "bytes": 36027,
+      "sha256": "9ff1ebf7ced7ca515f68609822cce59e610084386b8c1565cbff53f945f28395"
     },
     {
       "path": "nana/cli/presence_commands.py",
@@ -1015,8 +1327,8 @@
     {
       "path": "nana/cli/status_commands.py",
       "source": "nana-core",
-      "bytes": 10972,
-      "sha256": "0fff1fd3044310f592f811ffda13c2ec7340aed59654db57b48271856a405a24"
+      "bytes": 11305,
+      "sha256": "d4b5e849d2724624ed6b4c1dc69bf9ac238336b2f2ac3d1a4d666040d63861fc"
     },
     {
       "path": "nana/cli/voice_commands.py",
@@ -1031,6 +1343,12 @@
       "sha256": "9b0a1f71e42098af4a5c822da53bda0960bdcd0431402ec20cd3ca2b89f2e424"
     },
     {
+      "path": "nana/cli/web_commands.py",
+      "source": "nana-core",
+      "bytes": 898,
+      "sha256": "43711bf7db5d8c3ec9eb290a0c8761c0ba80576b236903e9752d57a09bb5d30f"
+    },
+    {
       "path": "nana/commands/__init__.py",
       "source": "nana-core",
       "bytes": 989,
@@ -1039,8 +1357,8 @@
     {
       "path": "nana/commands/dispatch_surface.py",
       "source": "nana-core",
-      "bytes": 3636,
-      "sha256": "45636c85464d87334d28a49cccf641d009603605bef7b32c8bf3e2777cd654a2"
+      "bytes": 3670,
+      "sha256": "b9adf70fc792c080a6fb5a86483604c71f7fe251f65a46bd4b81888c04dfe2b7"
     },
     {
       "path": "nana/commands/dynamic.py",
@@ -1051,8 +1369,14 @@
     {
       "path": "nana/commands/help.py",
       "source": "nana-core",
-      "bytes": 8366,
-      "sha256": "d92e7312110fd9ef576666edc12f4ec756a4f48043229eff70d1e429a0094942"
+      "bytes": 8498,
+      "sha256": "b67b0b2f65469b25f1e09b089375330140362ca09f824a30b3d5bb9ac6ea2eef"
+    },
+    {
+      "path": "nana/commands/registry.py",
+      "source": "nana-core",
+      "bytes": 666,
+      "sha256": "91bcafe409c013f0e56d7f52123c7cac4268694773f45d5023d49691efab2794"
     },
     {
       "path": "nana/commands/registry_adapters.py",
@@ -1081,8 +1405,8 @@
     {
       "path": "nana/commands/registry_live.py",
       "source": "nana-core",
-      "bytes": 34267,
-      "sha256": "ac545d21ac2f9d2d4a986425eba5f0132d9b3db10842fc1f8ab1ab06469dc11e"
+      "bytes": 34300,
+      "sha256": "4fc9181c3fa4be31decebabbe2c8d0595a0c0ca560a485185f5379093fb69796"
     },
     {
       "path": "nana/commands/registry_regression_cases.py",
@@ -1103,10 +1427,10 @@
       "sha256": "cd9bd4ebd38ec9bcee90cdfe5aea2ccb24497acf7524f07dbfb0f8b4ea10d140"
     },
     {
-      "path": "nana/commands/registry.py",
+      "path": "nana/commands/router.py",
       "source": "nana-core",
-      "bytes": 666,
-      "sha256": "91bcafe409c013f0e56d7f52123c7cac4268694773f45d5023d49691efab2794"
+      "bytes": 10718,
+      "sha256": "b4ffa3a49f0ecb73ef5cad2c373098d3c90ca63b6ab73b929da70e6ed9b4a35e"
     },
     {
       "path": "nana/commands/router_manifest.py",
@@ -1115,16 +1439,10 @@
       "sha256": "8660c200f2f0d1efa0013d7c5011d80aca440f3e0a3b5b46595a0e8fbec30fa2"
     },
     {
-      "path": "nana/commands/router.py",
-      "source": "nana-core",
-      "bytes": 10718,
-      "sha256": "b4ffa3a49f0ecb73ef5cad2c373098d3c90ca63b6ab73b929da70e6ed9b4a35e"
-    },
-    {
       "path": "nana/config.py",
-      "source": "nana-core+public-portability-patch",
-      "bytes": 16857,
-      "sha256": "8253bf636fc63152e972b3bf2ee8adfb124edbe0d199d8270596aed0dd894a58"
+      "source": "nana-core",
+      "bytes": 18096,
+      "sha256": "e968e89af6727429b7bd547611813395382a7fce9620c3afd9af442b2e51441c"
     },
     {
       "path": "nana/core/__init__.py",
@@ -1151,6 +1469,12 @@
       "sha256": "989385df7cb75a88c8eec1c809ad6476e2b99016a925b8f86fe118b5bcb8206c"
     },
     {
+      "path": "nana/core/context.py",
+      "source": "nana-core",
+      "bytes": 2843,
+      "sha256": "3936b52167d7a04f4f5373e8cc66ab896dc2e6ec8cdb2651cc6deceae44ec2fa"
+    },
+    {
       "path": "nana/core/context_budget.py",
       "source": "nana-core",
       "bytes": 290,
@@ -1161,12 +1485,6 @@
       "source": "nana-core",
       "bytes": 4501,
       "sha256": "22cfd98cb75e26e7ee16602bc0201e2d69bb210afdc8d7626674a4a3cb4586bf"
-    },
-    {
-      "path": "nana/core/context.py",
-      "source": "nana-core",
-      "bytes": 2843,
-      "sha256": "3936b52167d7a04f4f5373e8cc66ab896dc2e6ec8cdb2651cc6deceae44ec2fa"
     },
     {
       "path": "nana/core/diagnostics.py",
@@ -1199,6 +1517,12 @@
       "sha256": "54f1b2b0be338ef0491b0fafe29adbd04a089343f9787d97e08371696ed3bfd8"
     },
     {
+      "path": "nana/core/status.py",
+      "source": "nana-core",
+      "bytes": 2822,
+      "sha256": "8f6313ded01746563e4c63fbe6ee81af66766de996259dc35daa7bc700e93821"
+    },
+    {
       "path": "nana/core/status_public.py",
       "source": "nana-core",
       "bytes": 9312,
@@ -1229,12 +1553,6 @@
       "sha256": "75f8ddb41b62451958415de0da4eb8369ea665819acf2904a1a6210330bcb4f5"
     },
     {
-      "path": "nana/core/status.py",
-      "source": "nana-core",
-      "bytes": 2822,
-      "sha256": "8f6313ded01746563e4c63fbe6ee81af66766de996259dc35daa7bc700e93821"
-    },
-    {
       "path": "nana/core/vision.py",
       "source": "nana-core",
       "bytes": 372,
@@ -1242,13 +1560,13 @@
     },
     {
       "path": "nana/data/identity.example.json",
-      "source": "generated-public-template",
+      "source": "public-template-or-document",
       "bytes": 380,
       "sha256": "49ad440cbfd3538cf4316e858cd333415ed590679ca51c0f1e9a2d4f8450ee29"
     },
     {
       "path": "nana/data/users.example.json",
-      "source": "generated-public-template",
+      "source": "public-template-or-document",
       "bytes": 192,
       "sha256": "6a8cd5bd5e5851c17ab8ab26ee84ae0cba182f89f99eae647facee7b89ac54db"
     },
@@ -1272,7 +1590,7 @@
     },
     {
       "path": "nana/game/osu/aim_trajectory.py",
-      "source": "nana-core+public-portability-patch",
+      "source": "nana-core",
       "bytes": 16495,
       "sha256": "b668a5953d5683caef76a6ca680b8e7c733cdda92f1fc6eb9f44105328ef53b6"
     },
@@ -1314,7 +1632,7 @@
     },
     {
       "path": "nana/game/osu/executor_armed_lease.py",
-      "source": "nana-core+public-portability-patch",
+      "source": "nana-core",
       "bytes": 33854,
       "sha256": "eb0dc4c6c057c2f4b0c4889721089fc16a3b1405d514800a700fc1da4b26dbac"
     },
@@ -1326,7 +1644,7 @@
     },
     {
       "path": "nana/game/osu/executor_dry_run.py",
-      "source": "nana-core+public-portability-patch",
+      "source": "nana-core",
       "bytes": 14357,
       "sha256": "953931a60ff85c3df6207ef0dc5acc0e987a9ba1ec4480a9c8739b75f0700275"
     },
@@ -1368,7 +1686,7 @@
     },
     {
       "path": "nana/game/osu/input_safety.py",
-      "source": "nana-core+public-portability-patch",
+      "source": "nana-core",
       "bytes": 36550,
       "sha256": "7f1df93ee2165fc27ca52d17c7bab5405d72b6567eec20b86f03da2de6c59278"
     },
@@ -1404,7 +1722,7 @@
     },
     {
       "path": "nana/game/osu/result_stage.py",
-      "source": "nana-core+public-portability-patch",
+      "source": "nana-core",
       "bytes": 22744,
       "sha256": "00043866a301c1db6492d87bc4985de91f7e516f17206e4e46a7a2a436d4266d"
     },
@@ -1439,20 +1757,20 @@
       "sha256": "1817d6c324104aa9cce43689e8217c8489b01cf789eb4152acb705c7e9cfdc9e"
     },
     {
-      "path": "nana/game/osu/runtime_packet_loop.py",
-      "source": "nana-core",
-      "bytes": 14659,
-      "sha256": "db52ca0dee6b578dc0386a75e907741bb844f5c5ad3a08062936fc574bb217a8"
-    },
-    {
       "path": "nana/game/osu/runtime_packet.py",
       "source": "nana-core",
       "bytes": 16630,
       "sha256": "3593974195b96faaeac6940221d250c0c968c24331bd0c61efa52421a5d5f8a2"
     },
     {
+      "path": "nana/game/osu/runtime_packet_loop.py",
+      "source": "nana-core",
+      "bytes": 14659,
+      "sha256": "db52ca0dee6b578dc0386a75e907741bb844f5c5ad3a08062936fc574bb217a8"
+    },
+    {
       "path": "nana/game/osu/stream_persona.py",
-      "source": "nana-core+public-portability-patch",
+      "source": "nana-core",
       "bytes": 5697,
       "sha256": "77dd2cacbf4ee6dceff092a45cffc7be0128f65f2740fa388fc837324faf7120"
     },
@@ -1523,16 +1841,16 @@
       "sha256": "e58dfb0e3e635ee1168b901c5b9a507f093131915317cfdf3a86ae6b70b807ae"
     },
     {
-      "path": "nana/game/stardew/registry_views.py",
-      "source": "nana-core",
-      "bytes": 842,
-      "sha256": "ba2b3ab9512d4409bc78d6102f398359ac2e681eed6f7164796d1dc13a14f8c9"
-    },
-    {
       "path": "nana/game/stardew/registry.py",
       "source": "nana-core",
       "bytes": 3768,
       "sha256": "598f72fb9754349d9e1a94904d0e33236c26d37af2ddf2686b7b921ede693efb"
+    },
+    {
+      "path": "nana/game/stardew/registry_views.py",
+      "source": "nana-core",
+      "bytes": 842,
+      "sha256": "ba2b3ab9512d4409bc78d6102f398359ac2e681eed6f7164796d1dc13a14f8c9"
     },
     {
       "path": "nana/integrations/__init__.py",
@@ -1629,12 +1947,6 @@
       "source": "nana-core",
       "bytes": 4690,
       "sha256": "3110ad46b81988ef04d8dba29057113cf39fa8fa09ba26545b9dcd0b03c80742"
-    },
-    {
-      "path": "nana/phases/phase_stubs.py",
-      "source": "nana-core",
-      "bytes": 836,
-      "sha256": "3f5d0a99d23956babf16ea498e092e82d509fb7d5eda656b6389c2c8cce6c451"
     },
     {
       "path": "nana/phases/phase10.py",
@@ -1787,10 +2099,10 @@
       "sha256": "d1fe75ec620ff74e6c0424bc1d7cb5f8c4255b7f842c3eacf73cc35cbe6fb03c"
     },
     {
-      "path": "nana/runtime_queue.py",
+      "path": "nana/phases/phase_stubs.py",
       "source": "nana-core",
-      "bytes": 1070,
-      "sha256": "eca9d8cf3fbf1ce7aa243afe9d86a92f4de1f198125cf81f51cb9eb96461ecfe"
+      "bytes": 836,
+      "sha256": "3f5d0a99d23956babf16ea498e092e82d509fb7d5eda656b6389c2c8cce6c451"
     },
     {
       "path": "nana/runtime/__init__.py",
@@ -1801,8 +2113,14 @@
     {
       "path": "nana/runtime/affect_lane.py",
       "source": "nana-core",
-      "bytes": 5435,
-      "sha256": "0e54679c632f19f2e30d3e521a94d76cc9d1517e586fa81bcb813c93590e334a"
+      "bytes": 5492,
+      "sha256": "4321da42611f52f419a634a9ed88d46cfc17adf154a5417a786f9450085def22"
+    },
+    {
+      "path": "nana/runtime/async_stream_bridge.py",
+      "source": "nana-core",
+      "bytes": 802,
+      "sha256": "fb03529d60be4e26cb0567dadeb706673a37fc8d2bd5e2de73a7c0d15143d133"
     },
     {
       "path": "nana/runtime/attention.py",
@@ -1831,8 +2149,8 @@
     {
       "path": "nana/runtime/avatar_intent_gateway.py",
       "source": "nana-core",
-      "bytes": 68006,
-      "sha256": "b926ef4a72822e4cf045c6ab796f22302ea8a5ed6b837ef32948fb3823eae80b"
+      "bytes": 77240,
+      "sha256": "6ef146bed7eb0ab5bc3969e379ca7253655c4ea145b4c8404f3fa3cc01d975ea"
     },
     {
       "path": "nana/runtime/avatar_live_hook.py",
@@ -1843,8 +2161,8 @@
     {
       "path": "nana/runtime/avatar_mouth_stream.py",
       "source": "nana-core",
-      "bytes": 3941,
-      "sha256": "430ead150c07fa4c2f0d54c47fb545f6bdd77fca864609c62b859a432ca0aeb8"
+      "bytes": 4086,
+      "sha256": "a5f56d3847950ed4bacba8a64580c9627287ec09b04bce7c61113a73e726c5b0"
     },
     {
       "path": "nana/runtime/avatar_reaction_policy.py",
@@ -1861,8 +2179,8 @@
     {
       "path": "nana/runtime/avatar_reply_turn.py",
       "source": "nana-core",
-      "bytes": 2295,
-      "sha256": "9dc4707cfe29c7083fa29ff9b7167f875b35e9111aa0a44f94d493c28b4e9659"
+      "bytes": 3552,
+      "sha256": "45c67487a17bf2ad805c61f87a13f2e7b688f5ed1a22109edfbb741f090150a0"
     },
     {
       "path": "nana/runtime/avatar_vts_dispatch.py",
@@ -1873,8 +2191,8 @@
     {
       "path": "nana/runtime/awareness_memory.py",
       "source": "nana-core",
-      "bytes": 72754,
-      "sha256": "fa2bba4ce3579853eb2048d62704b7ccb60b17a578ddafe15c658cab3ce26f99"
+      "bytes": 77566,
+      "sha256": "e66c89a14ace28ad638b33993b8b2d6a378195d51a30efbb48c88978c34d4cb1"
     },
     {
       "path": "nana/runtime/browser_refresh.py",
@@ -1885,8 +2203,8 @@
     {
       "path": "nana/runtime/browser_state.py",
       "source": "nana-core",
-      "bytes": 1767,
-      "sha256": "de34e11c34fd86d9645f22fd947ee6e3ce180b1861022bc5e69a470fb40e63e7"
+      "bytes": 3016,
+      "sha256": "ba19e440747b74353db29127067f0a18f71159725a8b36bb430c34ea1c9c2023"
     },
     {
       "path": "nana/runtime/capabilities.py",
@@ -1895,22 +2213,76 @@
       "sha256": "e33e1cb7153029c11faf97d633b99bc3f9500ac672b89629977460ab50b32045"
     },
     {
-      "path": "nana/runtime/context_budget_audit.py",
-      "source": "nana-core",
-      "bytes": 8248,
-      "sha256": "b81ac20b64052a277a87dae22d13c29fc0077e4fa4d86f5cd2252db02f84dbf4"
-    },
-    {
       "path": "nana/runtime/context.py",
       "source": "nana-core",
-      "bytes": 8940,
-      "sha256": "ed77ba9bc4eefef0e63016eec209da798403ccffce4963472921320f41f91652"
+      "bytes": 12605,
+      "sha256": "4c96cee6dba6be4b50735b98c3f070df6d8b24a85fde9098dbcd0695571dd082"
+    },
+    {
+      "path": "nana/runtime/context_adapters.py",
+      "source": "nana-core",
+      "bytes": 96076,
+      "sha256": "1982443cca877e84addb61b869eeb95acd0c31ab7a765f0290577ab54af953bc"
+    },
+    {
+      "path": "nana/runtime/context_autonomy.py",
+      "source": "nana-core",
+      "bytes": 27784,
+      "sha256": "d1c8a134aa24f2f08a6e17b4029439bc4fa4a646049ec3446fc4c3da1a1ccb4b"
+    },
+    {
+      "path": "nana/runtime/context_budget.py",
+      "source": "nana-core",
+      "bytes": 39163,
+      "sha256": "d78da92cf6d357066f794071d0b811f964e04ca001a68533bd21f63005939809"
+    },
+    {
+      "path": "nana/runtime/context_budget_audit.py",
+      "source": "nana-core",
+      "bytes": 10411,
+      "sha256": "fd33d318c443f844e7d49187a610a15808b84ed2b15b086fec2b460bb372d4ca"
+    },
+    {
+      "path": "nana/runtime/context_compiler.py",
+      "source": "nana-core",
+      "bytes": 26661,
+      "sha256": "05cad1e452dcbd9ede72e443da57a3b30712c26f3b4059dad8864543409d27ad"
+    },
+    {
+      "path": "nana/runtime/context_contracts.py",
+      "source": "nana-core",
+      "bytes": 64493,
+      "sha256": "f6a6518565ef9eaca3665947697d6226bf2d7ca3af3480747fdb01c3f65a60c3"
+    },
+    {
+      "path": "nana/runtime/context_readiness.py",
+      "source": "nana-core",
+      "bytes": 26341,
+      "sha256": "6253b955564f8159827685099dc2900137245b0f0baf6c8c7ac584ecee3451c7"
+    },
+    {
+      "path": "nana/runtime/context_runtime.py",
+      "source": "nana-core",
+      "bytes": 71924,
+      "sha256": "0d710971b43e7441c66bb56d7371a32218559fcea067404e660d4b078510a2cc"
+    },
+    {
+      "path": "nana/runtime/context_shadow.py",
+      "source": "nana-core",
+      "bytes": 32107,
+      "sha256": "58249f7b2816abe7afeb8d1df54c5cb041197d0a9b10dec0381cf2356497393d"
+    },
+    {
+      "path": "nana/runtime/context_telemetry.py",
+      "source": "nana-core",
+      "bytes": 57281,
+      "sha256": "75471dc6dfdb5ed360c62457406b1c6b82372ad65b067d05df72390c6c67e8e0"
     },
     {
       "path": "nana/runtime/controlled_memory_retrieval.py",
       "source": "nana-core",
-      "bytes": 34240,
-      "sha256": "c31f08f5106b2187cc25f87b96cb0cff363a9f193cbc1044e2a9b5b1c2291429"
+      "bytes": 39918,
+      "sha256": "9801038e18c387926e17d4996bba0e92397ec6ec9f30cd57bede787231c666e2"
     },
     {
       "path": "nana/runtime/core_anchor_recovery.py",
@@ -1950,7 +2322,7 @@
     },
     {
       "path": "nana/runtime/external_bridge.py",
-      "source": "nana-core+public-portability-patch",
+      "source": "nana-core",
       "bytes": 57679,
       "sha256": "0562ec65d51ab3171551add057d9405d866f96ef4ab39a4a773adbac771496df"
     },
@@ -1962,7 +2334,7 @@
     },
     {
       "path": "nana/runtime/identity.py",
-      "source": "nana-core+public-portability-patch",
+      "source": "nana-core",
       "bytes": 7659,
       "sha256": "0d91fdb9f3581450784c53edc952b32f16e8819b079e66650eaf622e6b2aa1b1"
     },
@@ -1974,15 +2346,15 @@
     },
     {
       "path": "nana/runtime/lane_leak_audit.py",
-      "source": "nana-core+public-portability-patch",
+      "source": "nana-core",
       "bytes": 8145,
       "sha256": "b0cad71ac0d6a5763c0c2a057412d28e8b7991b38cc54b762823c8dda3e1c71a"
     },
     {
       "path": "nana/runtime/live_awareness.py",
       "source": "nana-core",
-      "bytes": 26503,
-      "sha256": "70a797fb5fe19dfd54e711c362782c2f520cde7668482da955f295f7ef4dc6a4"
+      "bytes": 34246,
+      "sha256": "d0325d85df645298e3fc8d6c0ef26c22201b7e82d15fe57a37cc7d4c0d6e5125"
     },
     {
       "path": "nana/runtime/livestream_identity.py",
@@ -1999,8 +2371,8 @@
     {
       "path": "nana/runtime/llm_route_status.py",
       "source": "nana-core",
-      "bytes": 16205,
-      "sha256": "dac6988ada9c833c88895d3f68f65f3eb3f8986ac53329382fff884c9c1dcabb"
+      "bytes": 18216,
+      "sha256": "628137869633746251a5b4b69521d9e8f2cb28d6170f456e1a19e301112bf69e"
     },
     {
       "path": "nana/runtime/logger.py",
@@ -2023,8 +2395,8 @@
     {
       "path": "nana/runtime/memory_grounding.py",
       "source": "nana-core",
-      "bytes": 38401,
-      "sha256": "749226182c74ac9d2f8ef4746aac68090cfc00c164c98eed12828b9e03315e32"
+      "bytes": 40843,
+      "sha256": "a96a313f290348590a50a0f0807d4ac35763c8e7b223c014d1890fca30d27801"
     },
     {
       "path": "nana/runtime/memory_persistence.py",
@@ -2053,8 +2425,26 @@
     {
       "path": "nana/runtime/mood_continuity.py",
       "source": "nana-core",
-      "bytes": 19868,
-      "sha256": "54fd21fdfbdc1012d4eca9117404ffd6fc5e91d8a47dd6518205d66c1c8fbbdd"
+      "bytes": 21599,
+      "sha256": "e99533ea07f3ff112259b7734971b2af55222c7d8806c2c3c98838bc3345e995"
+    },
+    {
+      "path": "nana/runtime/nana_web_launcher.py",
+      "source": "nana-core",
+      "bytes": 13532,
+      "sha256": "304606150896b82bf9586cfbf3cfdc763ed59f4591fb04c9aa26f748439de073"
+    },
+    {
+      "path": "nana/runtime/nana_web_ownership.py",
+      "source": "nana-core",
+      "bytes": 9906,
+      "sha256": "009998802d8de4e4f08b1e90248dd6e184cad92004fdfb151f815c6ed57e1eca"
+    },
+    {
+      "path": "nana/runtime/persona.py",
+      "source": "nana-core",
+      "bytes": 28494,
+      "sha256": "ca8978dcd23b34983a1458fb0d92da326910064f9afa825668e3b3a1a8161bed"
     },
     {
       "path": "nana/runtime/persona_boundary.py",
@@ -2067,12 +2457,6 @@
       "source": "nana-core",
       "bytes": 14662,
       "sha256": "566a054b5c5643f5702bef8a38c6f042f5a6f94b4c77958436942ece3dbb03b4"
-    },
-    {
-      "path": "nana/runtime/persona.py",
-      "source": "nana-core",
-      "bytes": 25759,
-      "sha256": "e9f1f2bdbf176c5b5c6a2e2d18878b8a56ec5d5a52b014a64062888c352f6e51"
     },
     {
       "path": "nana/runtime/post_stream_lessons.py",
@@ -2129,28 +2513,76 @@
       "sha256": "69f74d7c4a4d13432e88ab8e89b23981626ec56bbc1855fedcd26045849cdd2b"
     },
     {
+      "path": "nana/runtime/private_avatar_signals.py",
+      "source": "nana-core",
+      "bytes": 8144,
+      "sha256": "af2ad6f221dc5cb8442f855a6cfe53fddfbf2ab20d0c5a05de10db0bfdd83b04"
+    },
+    {
+      "path": "nana/runtime/private_turn_coordinator.py",
+      "source": "nana-core",
+      "bytes": 51075,
+      "sha256": "7291cac293a6efda83b659f6201d40d80c67c92be32934efe393cdd89ac7c81f"
+    },
+    {
+      "path": "nana/runtime/private_turn_observer.py",
+      "source": "nana-core",
+      "bytes": 10906,
+      "sha256": "86a817d3a1f0471631033b7c98b1d5cbf9c9f307a988f63ced9096d17ac4e9a9"
+    },
+    {
       "path": "nana/runtime/private_voice_overlap.py",
       "source": "nana-core",
-      "bytes": 9049,
-      "sha256": "9cd9b8d29a7aeab100f305f44f874f604f904ca431420f071c411fe350c4bcdd"
+      "bytes": 9457,
+      "sha256": "0b3acfc33f84d4113612c007bdfdc69a4d94cbf4f704db4bc9f61725c0fa87fc"
+    },
+    {
+      "path": "nana/runtime/private_voice_receipts.py",
+      "source": "nana-core",
+      "bytes": 15216,
+      "sha256": "d5c4f5ef7af76d4dfc8f3820dec118f92102b1f9714a86ce8ac60d191dd2afe1"
     },
     {
       "path": "nana/runtime/private_voice_ttd.py",
       "source": "nana-core",
-      "bytes": 9140,
-      "sha256": "8be9667e594f5e221ebacda8c8fee7a4e849a9a6ba281f9a8e0d6c7e9a98aa3e"
+      "bytes": 9544,
+      "sha256": "15a6c6c4e20be41bdf7bcd7038dd1b8c2aaab47b2e3dc41cd81b6b05149a8726"
     },
     {
-      "path": "nana/runtime/proactive_engine.py",
+      "path": "nana/runtime/private_web_chat_auth.py",
       "source": "nana-core",
-      "bytes": 24431,
-      "sha256": "282d416f564445269f286ff0c682659667f458311377bb52d39fd9c645fe1ced"
+      "bytes": 13961,
+      "sha256": "9bd0a224374bb6e508b36eb14ea54a3b1774e13d2f0aaa8ca139f24d3fae2b60"
+    },
+    {
+      "path": "nana/runtime/private_web_chat_protocol.py",
+      "source": "nana-core",
+      "bytes": 17034,
+      "sha256": "99754ee5ec6129f615272e5c62c4f78bd9eebcc662dcf21f61b80557b71d5ee1"
+    },
+    {
+      "path": "nana/runtime/private_web_chat_runtime.py",
+      "source": "nana-core",
+      "bytes": 6958,
+      "sha256": "707f3f69e94cf83e271ad4650bcf2b986ac4e14caffcba5952fc8c097be78751"
+    },
+    {
+      "path": "nana/runtime/private_web_chat_server.py",
+      "source": "nana-core",
+      "bytes": 59232,
+      "sha256": "9529cd63b53e7a00c93eddad60555e03978a958efd54e12cd4a77b6beec4c58f"
     },
     {
       "path": "nana/runtime/proactive.py",
       "source": "nana-core",
       "bytes": 11268,
       "sha256": "f2c78f30fca30a82e2e022701a9aeca27304b69386ad4ea705b9fec89db69554"
+    },
+    {
+      "path": "nana/runtime/proactive_engine.py",
+      "source": "nana-core",
+      "bytes": 24431,
+      "sha256": "282d416f564445269f286ff0c682659667f458311377bb52d39fd9c645fe1ced"
     },
     {
       "path": "nana/runtime/process_watch.py",
@@ -2238,7 +2670,7 @@
     },
     {
       "path": "nana/runtime/public_reply_evaluator.py",
-      "source": "nana-core+public-portability-patch",
+      "source": "nana-core",
       "bytes": 19371,
       "sha256": "db872a41f04042cc92993b609211c1761eace2b8b899a3b2f88abf6d3ee13b17"
     },
@@ -2263,8 +2695,8 @@
     {
       "path": "nana/runtime/public_stage_identity.py",
       "source": "nana-core",
-      "bytes": 40290,
-      "sha256": "f26af4e56a86442e6d38ec78d761ce4610d4a0f445f196c203c509abe0dd52f2"
+      "bytes": 40311,
+      "sha256": "fe71387182ef261cb6afd5ab150245c7401b73ea9e98adaa5b4e60052f8bbe5e"
     },
     {
       "path": "nana/runtime/public_thread_memory.py",
@@ -2317,8 +2749,8 @@
     {
       "path": "nana/runtime/session_checkpoint.py",
       "source": "nana-core",
-      "bytes": 22804,
-      "sha256": "b974ea451140d9f94b82007f1498ac47f52a09eafb8447fdf75996321604448c"
+      "bytes": 25443,
+      "sha256": "06907d7bbdb5bf9a5ca4a33d91eae76bb3f57332997428f98de8b70f8bb895f4"
     },
     {
       "path": "nana/runtime/session_review_adapter.py",
@@ -2329,8 +2761,8 @@
     {
       "path": "nana/runtime/social_session.py",
       "source": "nana-core",
-      "bytes": 65332,
-      "sha256": "158410f7f99393b7d50d17bb0d0cb4792637fed6efe98dce589bffe215112a57"
+      "bytes": 70013,
+      "sha256": "c112072df74091e3f56a78bc1dc8be36c30eec0cd7c7b9f699c16b66f9a5dc2b"
     },
     {
       "path": "nana/runtime/social_starters.py",
@@ -2352,15 +2784,15 @@
     },
     {
       "path": "nana/runtime/starter_send.py",
-      "source": "nana-core+public-portability-patch",
+      "source": "nana-core",
       "bytes": 16356,
       "sha256": "75ec8ed1ab47e59d5f4ab43fa5c8bf8d75bdd6e41d29512fea7a14dce007ae81"
     },
     {
       "path": "nana/runtime/startup_config_contract.py",
       "source": "nana-core",
-      "bytes": 35116,
-      "sha256": "2307cf3d25fcd789d8cd13986a74d904a3bba878b020359d1822d7bd4e4982eb"
+      "bytes": 42162,
+      "sha256": "9f872052ca674e30534af971d512b7a8ac9c5c76f7bdc8f63f7e7b336a892659"
     },
     {
       "path": "nana/runtime/stream_cum0_contract.py",
@@ -2371,8 +2803,8 @@
     {
       "path": "nana/runtime/stream_cum2_response.py",
       "source": "nana-core",
-      "bytes": 13934,
-      "sha256": "7618f37c1c3716c9fd1e3ce8dbf5917120c037379fa5ca01d792a00314899007"
+      "bytes": 19841,
+      "sha256": "d9bea5bd12b2988ab57bf9078dadfad00ca516e4f748b308007c98622cdb75c9"
     },
     {
       "path": "nana/runtime/stream_cum3_youtube_publish.py",
@@ -2389,8 +2821,8 @@
     {
       "path": "nana/runtime/stream_cum5_voice_engine_adapter.py",
       "source": "nana-core",
-      "bytes": 12510,
-      "sha256": "eed6eb5aad32bcc4bc0f89bb69cfee39907e011687fae65e1770882f86219ce1"
+      "bytes": 16456,
+      "sha256": "52bd7b6a954e9d1a6ae7bd6797abc675efa7912538e968428f2b6f7b32e7bc98"
     },
     {
       "path": "nana/runtime/stream_cum5_voice_playback.py",
@@ -2406,7 +2838,7 @@
     },
     {
       "path": "nana/runtime/stream_event_timeline.py",
-      "source": "nana-core+public-portability-patch",
+      "source": "nana-core",
       "bytes": 6956,
       "sha256": "30618d503604675a75ac493a858a45fabce1858ce03995f2ddbbaac95dc37ce6"
     },
@@ -2418,9 +2850,15 @@
     },
     {
       "path": "nana/runtime/stream_public_output.py",
-      "source": "nana-core+public-portability-patch",
+      "source": "nana-core",
       "bytes": 20145,
       "sha256": "43ab6b351030fe28c2e12e8c29703ba1f9c569ee6d03faa07c331e6868ce8a4f"
+    },
+    {
+      "path": "nana/runtime/stream_public_visual_signals.py",
+      "source": "nana-core",
+      "bytes": 11797,
+      "sha256": "e23b23a9254c086b6a8e91daff3eb50449f11a94b71dbb7092c5021bc9438cb8"
     },
     {
       "path": "nana/runtime/stream_ready_status.py",
@@ -2549,6 +2987,12 @@
       "sha256": "c024131b1d21519954c8fa3bb871fec447abfe66ad11ae938a9cbebc817ab1dd"
     },
     {
+      "path": "nana/runtime_queue.py",
+      "source": "nana-core",
+      "bytes": 1070,
+      "sha256": "eca9d8cf3fbf1ce7aa243afe9d86a92f4de1f198125cf81f51cb9eb96461ecfe"
+    },
+    {
       "path": "nana/social/__init__.py",
       "source": "nana-core",
       "bytes": 6648,
@@ -2609,22 +3053,58 @@
       "sha256": "f39c78d54084d64a56eecd1fa1fa527f1b23395203750ca861188d007c029a13"
     },
     {
+      "path": "nana/tests/fixtures/context_runtime/autonomy_private.json",
+      "source": "nana-core",
+      "bytes": 441,
+      "sha256": "28442fbfa2b07475bd99881da46c7b19be3a9caa4a754613783bfb94f9328798"
+    },
+    {
+      "path": "nana/tests/fixtures/context_runtime/autonomy_public.json",
+      "source": "nana-core",
+      "bytes": 442,
+      "sha256": "01bd25edad83f97642eb3d596050bd6d7952223076eb20411a57977680547375"
+    },
+    {
+      "path": "nana/tests/fixtures/context_runtime/operator.json",
+      "source": "nana-core",
+      "bytes": 367,
+      "sha256": "a32e895dff630657c9678e90c824b6830a2845d8f61c460c46d8576bf5bb203e"
+    },
+    {
+      "path": "nana/tests/fixtures/context_runtime/private_owner.json",
+      "source": "nana-core",
+      "bytes": 409,
+      "sha256": "de326b156b1d503e1a4dd3da67bf7874629af849ed2134d5291a13dfa5b06397"
+    },
+    {
+      "path": "nana/tests/fixtures/context_runtime/public_stage.json",
+      "source": "nana-core",
+      "bytes": 514,
+      "sha256": "69a2d0812ea2e6784440c6a0185fe29df09e28e1a3dd8f8ea0c91c52a39001d2"
+    },
+    {
       "path": "nana/tests/smoke/manual_voice_streaming_local_replay.py",
       "source": "nana-core",
       "bytes": 5665,
       "sha256": "5fceb4abd281ef7c722a2aed6d24c87c0b247a8f976737a41dbc87b4f600dd4b"
     },
     {
+      "path": "nana/tests/smoke/smoke_async_stream_bridge.py",
+      "source": "nana-core",
+      "bytes": 981,
+      "sha256": "c1dcedc789a18050c1d8d276e6cdf77bd75049235e54c9efdbef631f484e17e6"
+    },
+    {
       "path": "nana/tests/smoke/smoke_autonomy_output_gate.py",
       "source": "nana-core",
-      "bytes": 7233,
-      "sha256": "716e00f93ef4cb838574e6335fa456aff5a0e85552a5b440e80841fa1d59eb22"
+      "bytes": 10852,
+      "sha256": "98c4335d013112f138352ff743f6d404d91754df74610799ac325f316e58ec98"
     },
     {
       "path": "nana/tests/smoke/smoke_autonomy_start_silent.py",
       "source": "nana-core",
-      "bytes": 1670,
-      "sha256": "d2367a73c2bd11bad38e93fc8162dd4b6d9c1bb13936a8c3faf5dd685460e1cb"
+      "bytes": 3743,
+      "sha256": "65b51e708de9ea22e42fb7d6745d9772e2ab117e3020fe5e8a1ba2224562336d"
     },
     {
       "path": "nana/tests/smoke/smoke_avatar_daily_reactions.py",
@@ -2699,6 +3179,18 @@
       "sha256": "68d99ca0e4fe96df4a97ee2ca1aabec0b15c911f45df2b20364194f9bb41b37c"
     },
     {
+      "path": "nana/tests/smoke/smoke_context_runtime_integration.py",
+      "source": "nana-core",
+      "bytes": 32461,
+      "sha256": "5f3df374a43db52145e66d25d1bcfbcbc2f1fe9936f5fec388ddd7480ef5ccb4"
+    },
+    {
+      "path": "nana/tests/smoke/smoke_context_runtime_legacy_baseline.py",
+      "source": "nana-core",
+      "bytes": 32770,
+      "sha256": "bc3961fd92c22aaa0d53e41a3c0c2f80539b2b6900778c901072ae43ccb83578"
+    },
+    {
       "path": "nana/tests/smoke/smoke_core_architecture_guard.py",
       "source": "nana-core",
       "bytes": 4679,
@@ -2712,15 +3204,15 @@
     },
     {
       "path": "nana/tests/smoke/smoke_core_config_contract.py",
-      "source": "nana-core+public-portability-patch",
-      "bytes": 29710,
-      "sha256": "d08de3915e8ba4d5e3850e90aadea62e867cedc82d1bb107f852823f87b5a9a8"
+      "source": "nana-core",
+      "bytes": 39339,
+      "sha256": "43bf2081c772281366db381d7187e420f0d062ca0513fcd6cd97dcb42aee4691"
     },
     {
       "path": "nana/tests/smoke/smoke_core_runtime_lifecycle.py",
       "source": "nana-core",
-      "bytes": 17497,
-      "sha256": "b1fcc39eea7a0e638ff53850fea773edc7cf56457db993df3b52baba660bb5cf"
+      "bytes": 17864,
+      "sha256": "b2aa9603c6d8794b7ab690410a141e4d6897a4f0567f7d73a8d4942977e97762"
     },
     {
       "path": "nana/tests/smoke/smoke_core_runtime_ownership.py",
@@ -2730,15 +3222,15 @@
     },
     {
       "path": "nana/tests/smoke/smoke_history_privacy.py",
-      "source": "nana-core+public-portability-patch",
+      "source": "nana-core",
       "bytes": 15498,
       "sha256": "ac704117ceaf8100384c8abba6d7c9b843faa2759ad18884e72b7c07f9dd1515"
     },
     {
       "path": "nana/tests/smoke/smoke_history_voice_consistency.py",
       "source": "nana-core",
-      "bytes": 15428,
-      "sha256": "c86236f98175b658683201aa286a059b9f2f48bbbf36ef09ff6154ac6e3dcaf6"
+      "bytes": 15480,
+      "sha256": "407f6db854a7a82b68bac1b8ba75ddf8cb7af5488cb58b66067ab66ecce2101d"
     },
     {
       "path": "nana/tests/smoke/smoke_interaction_latency_status.py",
@@ -2749,8 +3241,8 @@
     {
       "path": "nana/tests/smoke/smoke_livestream_identity.py",
       "source": "nana-core",
-      "bytes": 11653,
-      "sha256": "ad1084f08f7c42ba4a54f2761ee48e5c7c20c8c4415349926ec9101c14bb6d66"
+      "bytes": 13814,
+      "sha256": "1f432a1275f2e77838f07e00d1bb9205d068d51f622437dbf773ef50772a5d46"
     },
     {
       "path": "nana/tests/smoke/smoke_llm_latency_v1.py",
@@ -2761,8 +3253,8 @@
     {
       "path": "nana/tests/smoke/smoke_llm_private_fast_lane.py",
       "source": "nana-core",
-      "bytes": 9044,
-      "sha256": "7850d7acac6fef7610ae1f9b0c2f1f6cef6df527f3296d129ffe313551fc1f76"
+      "bytes": 9269,
+      "sha256": "d322c518bcaaecca415e2d746a31c1fb9136b63cad3f5884fc0031a404e30c55"
     },
     {
       "path": "nana/tests/smoke/smoke_llm_route_status.py",
@@ -2773,8 +3265,8 @@
     {
       "path": "nana/tests/smoke/smoke_llmgate_model_routing.py",
       "source": "nana-core",
-      "bytes": 14580,
-      "sha256": "eb3e7534742044d413a362104bb48988b77f085f78b06ce4420a7eb9904b865a"
+      "bytes": 22888,
+      "sha256": "c29480a64464d07f8671422cade439ae4c6e9c437c91695a60c05dc845800fd1"
     },
     {
       "path": "nana/tests/smoke/smoke_memory_answer_retest.py",
@@ -2815,20 +3307,32 @@
     {
       "path": "nana/tests/smoke/smoke_memory_v2_phase1.py",
       "source": "nana-core",
-      "bytes": 53324,
-      "sha256": "e9d53030b9e8041d758b360446103156d044a48746732e6f0fdf65c9853a8414"
+      "bytes": 53571,
+      "sha256": "ada63c77b039b912e7ab2d74eeefb88fe48788617d37e02c06291c8087ef8d44"
     },
     {
       "path": "nana/tests/smoke/smoke_memory_v2_public_prompt.py",
       "source": "nana-core",
-      "bytes": 18284,
-      "sha256": "1daf678f92a05042bd34e20f63afe29f7fd25b5eb32d1bfad9d3f13622f7900d"
+      "bytes": 19066,
+      "sha256": "d91c6db005d6a08d310c953761174546c00ba6137e89d1c6ee7803505bd7d951"
     },
     {
-      "path": "nana/tests/smoke/smoke_phase_lazy_surface.py",
+      "path": "nana/tests/smoke/smoke_nana_web_launcher.py",
       "source": "nana-core",
-      "bytes": 1801,
-      "sha256": "b348a453f8917c6bfe84f1979abd111159850a3e1dc147e45746bfe5850a53c6"
+      "bytes": 15811,
+      "sha256": "aeb753e6846004c0ec2e3c4c5d8fb288d118324a04ae455016393fc78293c10e"
+    },
+    {
+      "path": "nana/tests/smoke/smoke_nana_web_ownership.py",
+      "source": "nana-core",
+      "bytes": 10310,
+      "sha256": "a8f489fd57ecd11b7b773845ffe24b5f0c65b83792040cb282f1527d3ccf1260"
+    },
+    {
+      "path": "nana/tests/smoke/smoke_openai_direct_private_route.py",
+      "source": "nana-core",
+      "bytes": 19611,
+      "sha256": "ff24a263b10c9f818dc11725eeaa235038ee2717728661ebbf9c30fbd5122f84"
     },
     {
       "path": "nana/tests/smoke/smoke_phase2_consolidation_preview.py",
@@ -2859,6 +3363,12 @@
       "source": "nana-core",
       "bytes": 916,
       "sha256": "0eae6001529f4a4a9bf780d17630acc0d3cd612a4c4d7d4acf8ab4d8bcb3b7ec"
+    },
+    {
+      "path": "nana/tests/smoke/smoke_phase_lazy_surface.py",
+      "source": "nana-core",
+      "bytes": 1801,
+      "sha256": "b348a453f8917c6bfe84f1979abd111159850a3e1dc147e45746bfe5850a53c6"
     },
     {
       "path": "nana/tests/smoke/smoke_presence_audio_quality.py",
@@ -2909,10 +3419,40 @@
       "sha256": "e5c45034dc2380d1950b74d0421acb9abf2294f6864cc5f3967aab63f721590d"
     },
     {
-      "path": "nana/tests/smoke/smoke_private_voice_overlap_pcm.py",
+      "path": "nana/tests/smoke/smoke_private_avatar_reactions.py",
       "source": "nana-core",
-      "bytes": 20681,
-      "sha256": "801d2679d9ff3bd9eb67153566bcfecce8740b096a553af76a60f1b3bcdde5ff"
+      "bytes": 5194,
+      "sha256": "857bf2589daa6164fa7395cdcdcd89ad5e16cb8609c6e170dda4714a322181a2"
+    },
+    {
+      "path": "nana/tests/smoke/smoke_private_avatar_signals.py",
+      "source": "nana-core",
+      "bytes": 5888,
+      "sha256": "4aabfd982b976eac5c5159391fcceacdac9e9902d850d16ae67424d7027f2b03"
+    },
+    {
+      "path": "nana/tests/smoke/smoke_private_avatar_transport.py",
+      "source": "nana-core",
+      "bytes": 11547,
+      "sha256": "464f37e551d43f414f20b77340ba3404d1a1a1ea31c6bf2e27ba65c90e424baf"
+    },
+    {
+      "path": "nana/tests/smoke/smoke_private_avatar_voice.py",
+      "source": "nana-core",
+      "bytes": 10610,
+      "sha256": "af3f40ae0a18a463d858f0025fe3c4ed5a9d82dde6744e5e7736a7919d6b6f35"
+    },
+    {
+      "path": "nana/tests/smoke/smoke_private_turn_coordinator.py",
+      "source": "nana-core",
+      "bytes": 34281,
+      "sha256": "4f3561d5bc9778b3533b9a9bca204c68a3f3201af0dcbb800c6d94e3a289a00e"
+    },
+    {
+      "path": "nana/tests/smoke/smoke_private_turn_observer.py",
+      "source": "nana-core",
+      "bytes": 6272,
+      "sha256": "c9958ef2cc856b17259d05682d1cb3e6c3554267646933633b4b7cdbb53a5b00"
     },
     {
       "path": "nana/tests/smoke/smoke_private_voice_overlap.py",
@@ -2921,10 +3461,52 @@
       "sha256": "d192d6a0e9c032e5e88ba654dd6bb2777f5ff15db0355f1e0c19ae64b0b9ba9d"
     },
     {
+      "path": "nana/tests/smoke/smoke_private_voice_overlap_pcm.py",
+      "source": "nana-core",
+      "bytes": 20802,
+      "sha256": "0a0f8f60e58b20bd34d271e466fc1543eb70e081f725cfa81fa7656d48000611"
+    },
+    {
+      "path": "nana/tests/smoke/smoke_private_voice_receipts.py",
+      "source": "nana-core",
+      "bytes": 26864,
+      "sha256": "7707761789e255e0b1cecd167b502c9d02396309e8126555a13c4519c06b647e"
+    },
+    {
       "path": "nana/tests/smoke/smoke_private_voice_ttd.py",
       "source": "nana-core",
-      "bytes": 31202,
-      "sha256": "0fe51a0cd144deaa8e194f1a52c5bd6d13ffa04809fb8b814f2fa87c43cc0070"
+      "bytes": 31315,
+      "sha256": "88602e7cc065f5d06f1ad51818ebb50052c943d6d5f531496df85f5cc1980439"
+    },
+    {
+      "path": "nana/tests/smoke/smoke_private_web_chat_auth.py",
+      "source": "nana-core",
+      "bytes": 15791,
+      "sha256": "97626cef85581b54afc974843c3cbedd2c38d852ab5ec9c52c9106d2434a15d3"
+    },
+    {
+      "path": "nana/tests/smoke/smoke_private_web_chat_composition.py",
+      "source": "nana-core",
+      "bytes": 4800,
+      "sha256": "3655d5f834977560ac568a316c1637c0fcaa8b4f12977624eb5e00d52e4f9d7f"
+    },
+    {
+      "path": "nana/tests/smoke/smoke_private_web_chat_loopback.py",
+      "source": "nana-core",
+      "bytes": 13932,
+      "sha256": "908fe677dd75d207c1d59ed07df5acdab4c90cce74352558a4f16d4f2823559d"
+    },
+    {
+      "path": "nana/tests/smoke/smoke_private_web_chat_protocol.py",
+      "source": "nana-core",
+      "bytes": 16933,
+      "sha256": "78b4a5b305433d56ece3ac38afdb5e1eff063d7a751e32e3c9dd6a22ca7023ea"
+    },
+    {
+      "path": "nana/tests/smoke/smoke_private_web_chat_server.py",
+      "source": "nana-core",
+      "bytes": 45196,
+      "sha256": "2439d15cdb1d35967dace25d84ac7ca0ea9d4ee6cbb412095097c7734a6d61e5"
     },
     {
       "path": "nana/tests/smoke/smoke_public_classifier_retest.py",
@@ -2951,6 +3533,24 @@
       "sha256": "498bd3f0dd59dc0c4526189c0e5a3487fb9c07fd44cc660de8154a81952f438b"
     },
     {
+      "path": "nana/tests/smoke/smoke_public_tts_model.py",
+      "source": "nana-core",
+      "bytes": 1388,
+      "sha256": "09e7f0143d99939dc8efd0f5dc335e7a7859f4607cc99b73861804d4e19b420a"
+    },
+    {
+      "path": "nana/tests/smoke/smoke_public_visual_loopback_integration.py",
+      "source": "nana-core",
+      "bytes": 3931,
+      "sha256": "cb95b7929050d8f0b600430b0e361aef4f08f5116d96d990f657f6921ec0922e"
+    },
+    {
+      "path": "nana/tests/smoke/smoke_session_checkpoint.py",
+      "source": "nana-core",
+      "bytes": 16435,
+      "sha256": "806a6b9b4cb63f81c6429fb2db3c66b9282acd398129b022d070c637a3936186"
+    },
+    {
       "path": "nana/tests/smoke/smoke_session_checkpoint_grounding.py",
       "source": "nana-core",
       "bytes": 7303,
@@ -2969,16 +3569,10 @@
       "sha256": "82134023cc8efb4fc28308d91f45b7958c55e466ede0abe8fde42aab23302f19"
     },
     {
-      "path": "nana/tests/smoke/smoke_session_checkpoint.py",
-      "source": "nana-core+public-portability-patch",
-      "bytes": 16435,
-      "sha256": "806a6b9b4cb63f81c6429fb2db3c66b9282acd398129b022d070c637a3936186"
-    },
-    {
       "path": "nana/tests/smoke/smoke_stage8d_stream_policy_wiring.py",
       "source": "nana-core",
-      "bytes": 17769,
-      "sha256": "44d126b11a2a0048ae2d0c6ea15bac9a79381e421919573f2691758960799a19"
+      "bytes": 19769,
+      "sha256": "3c14cd44793aeee3f288da2aa4756f58ef826d0c39bcdc4e7491a249f5d7c502"
     },
     {
       "path": "nana/tests/smoke/smoke_stage8e_starter_proposals.py",
@@ -3085,14 +3679,14 @@
     {
       "path": "nana/tests/smoke/smoke_stage9g_core_self.py",
       "source": "nana-core",
-      "bytes": 8643,
-      "sha256": "ddb08e548e70209496d0dbc7b079a3f579d63e3ac40fc2421c1aa0ad538088bf"
+      "bytes": 8343,
+      "sha256": "8aaddba91e23875058e583dbaf7cca65745277be23e66537e2c16bae9753183f"
     },
     {
       "path": "nana/tests/smoke/smoke_stage9h_public_voice_style.py",
       "source": "nana-core",
-      "bytes": 26530,
-      "sha256": "ed1cc6991bf5396eabbad5b547b4d1d7ca64f8ad5d8defca5794cc511b95dc1d"
+      "bytes": 30778,
+      "sha256": "d4a341f5d17cb16d3de08588c000c0cb2b174634a8d391ce908216a152be0e6f"
     },
     {
       "path": "nana/tests/smoke/smoke_stage9i_public_conversation_director.py",
@@ -3157,8 +3751,8 @@
     {
       "path": "nana/tests/smoke/smoke_stage9s_public_quiet_room_rhythm.py",
       "source": "nana-core",
-      "bytes": 6564,
-      "sha256": "f3c5297a86528c4c1ca403fd7269dd7ba8c8d5f4a1f5c25857071edb820fccf9"
+      "bytes": 6597,
+      "sha256": "afde17b8af8bc31deeff591eb285d76c5f563d75a0b16ed774f88f8b46344a50"
     },
     {
       "path": "nana/tests/smoke/smoke_stage9t_voice_reply_budget.py",
@@ -3217,8 +3811,8 @@
     {
       "path": "nana/tests/smoke/smoke_stream_cum2_response.py",
       "source": "nana-core",
-      "bytes": 9496,
-      "sha256": "74a35a49dc670c782bce5bf495ec614133077d11f759f817af99794a90d9cde7"
+      "bytes": 10315,
+      "sha256": "c483a5798db6a024e696d5a1c599ae934af144f5da8a0390e95604ba786eff10"
     },
     {
       "path": "nana/tests/smoke/smoke_stream_cum3_youtube_publish.py",
@@ -3241,8 +3835,8 @@
     {
       "path": "nana/tests/smoke/smoke_stream_cum5_voice_engine_adapter.py",
       "source": "nana-core",
-      "bytes": 32804,
-      "sha256": "537551f2caeccd1f82333aed76684b1f1a15460bbf864f68902584aeb40f014b"
+      "bytes": 32979,
+      "sha256": "9db115194d7c5c9ee1966e87ee97c33a81e08558605e5a46424b6f2c25da03ce"
     },
     {
       "path": "nana/tests/smoke/smoke_stream_cum5_voice_playback.py",
@@ -3251,10 +3845,16 @@
       "sha256": "8ce68805d07ee52bc7ffdac0e72a5a2bc3d76cb0e39e2e65c24d91df02a913fb"
     },
     {
+      "path": "nana/tests/smoke/smoke_stream_public_visual_signals.py",
+      "source": "nana-core",
+      "bytes": 25608,
+      "sha256": "0193aa92e6f33effb6d0dbe7c517a556a40c4f623f6441b2e15f67871ef48ddd"
+    },
+    {
       "path": "nana/tests/smoke/smoke_stream_session_cli.py",
       "source": "nana-core",
-      "bytes": 12046,
-      "sha256": "807244da20136e477e6360da024456baedd04746eafba4d6ea3487e5c5bf128f"
+      "bytes": 12156,
+      "sha256": "773674601dc7f834f9909212c41b6978085abb329a510ffa5b7201668f6474ac"
     },
     {
       "path": "nana/tests/smoke/smoke_stream_session_control.py",
@@ -3271,8 +3871,8 @@
     {
       "path": "nana/tests/smoke/smoke_stream_voice_runner.py",
       "source": "nana-core",
-      "bytes": 45693,
-      "sha256": "52375aa9e763e690a359f0757424bff0e429c474131e303c7b111e742f44119e"
+      "bytes": 52081,
+      "sha256": "30454cbfeca3d7ad903aa524ba36dec2cc1e1380637817fde96cc104adc0416a"
     },
     {
       "path": "nana/tests/smoke/smoke_temporal_detector_guard.py",
@@ -3289,8 +3889,8 @@
     {
       "path": "nana/tests/smoke/smoke_voice_autonomy_isolation.py",
       "source": "nana-core",
-      "bytes": 3993,
-      "sha256": "b5faf48ea5d725f24bd6d225db31fc1cc647d4bc3ba06f29f9adb7d3b52e54a3"
+      "bytes": 5660,
+      "sha256": "88b52fe8dd4224eec398d66664a80df24fd58e8bb71365ea20369d0a4ca47911"
     },
     {
       "path": "nana/tests/smoke/smoke_voice_disabled_audio_tags.py",
@@ -3365,16 +3965,112 @@
       "sha256": "ebc62ecf88fab9870e9673198cc8741795cc3943da5e9092ee8ef1fb13c87839"
     },
     {
+      "path": "nana/tests/test_context_autonomy_profile.py",
+      "source": "nana-core",
+      "bytes": 33212,
+      "sha256": "c7c4c130b9fe61296f19bc1b5809592e5880fab2bee1307deda642462069ecb9"
+    },
+    {
+      "path": "nana/tests/test_context_budget.py",
+      "source": "nana-core",
+      "bytes": 30894,
+      "sha256": "9e05d2fce5eb8c5aa58a8d01ff730972a39b223d41e6e74e911663d3f4ac1b36"
+    },
+    {
+      "path": "nana/tests/test_context_compiler.py",
+      "source": "nana-core",
+      "bytes": 38015,
+      "sha256": "71e2c46a3ddd0a480fc960f772cf4ae0be9f2f4d8103e239cbdb5076c5f116f2"
+    },
+    {
+      "path": "nana/tests/test_context_conflicts.py",
+      "source": "nana-core",
+      "bytes": 14704,
+      "sha256": "501b22d99c409a1e53e49df519cffccdb042ce875a14cf5d598cd7ae1ba78535"
+    },
+    {
+      "path": "nana/tests/test_context_continuity_view.py",
+      "source": "nana-core",
+      "bytes": 53488,
+      "sha256": "2de05b42bc1b2c6f13672ca3e162cc727d06caec6cc0072ad87b4d5ba7df3f83"
+    },
+    {
+      "path": "nana/tests/test_context_contracts.py",
+      "source": "nana-core",
+      "bytes": 56671,
+      "sha256": "7e7c7701d2ccaaede7e85da40a7af9715b8bd19e1470e6817ac00fe9c9c38a4f"
+    },
+    {
+      "path": "nana/tests/test_context_cum2_profile.py",
+      "source": "nana-core",
+      "bytes": 30230,
+      "sha256": "a288848a2bef2fa9c1822eec1a80eaa63a15ee0a4142228f64d003e4af24364c"
+    },
+    {
+      "path": "nana/tests/test_context_current_situation.py",
+      "source": "nana-core",
+      "bytes": 22996,
+      "sha256": "fed185bd9743043903f9af234be41590705c7c447505c76eac18ea62e29df0b8"
+    },
+    {
+      "path": "nana/tests/test_context_expression_view.py",
+      "source": "nana-core",
+      "bytes": 36745,
+      "sha256": "04cddabd41770c6689011543a3e0d6f1c5a2fcdd3161ce50c5173e52c3895a1b"
+    },
+    {
+      "path": "nana/tests/test_context_frozen_boundary.py",
+      "source": "nana-core",
+      "bytes": 7472,
+      "sha256": "c8dd276721882af7cc4a361e955dfa278a6f83316d800e5fe047638ff390d88f"
+    },
+    {
+      "path": "nana/tests/test_context_memory_bundle.py",
+      "source": "nana-core",
+      "bytes": 45380,
+      "sha256": "b99317dc047325f0d7f8fcdbf62da0c2c8d9a5e0d28419b40fdaba85b93ce3cd"
+    },
+    {
+      "path": "nana/tests/test_context_pipeline_parity.py",
+      "source": "nana-core",
+      "bytes": 12382,
+      "sha256": "1831020797f24da80aceda30d689ea72883d7acb3aeb59a374cec1f8b4606990"
+    },
+    {
+      "path": "nana/tests/test_context_private_readiness.py",
+      "source": "nana-core",
+      "bytes": 41327,
+      "sha256": "5f258f20796fc1b1ec4a44357a8d3d0575231c5252142f5ceb6b971ad158d349"
+    },
+    {
+      "path": "nana/tests/test_context_runtime.py",
+      "source": "nana-core",
+      "bytes": 45882,
+      "sha256": "9b6e89d46399f94306654872c45e67f2c165b279d27ee469937f785df8636e35"
+    },
+    {
+      "path": "nana/tests/test_context_snapshot.py",
+      "source": "nana-core",
+      "bytes": 22953,
+      "sha256": "07f1f1003142482d05bb0a063a70ebcda1d8d92794e7802824c36f3613afd56f"
+    },
+    {
+      "path": "nana/tests/test_context_telemetry.py",
+      "source": "nana-core",
+      "bytes": 46212,
+      "sha256": "6a2b1601ccecfc48b17577543f57c0c7e07b71b2800979682abe39d439f1bc47"
+    },
+    {
+      "path": "nana/tests/test_context_transport_receipt.py",
+      "source": "nana-core",
+      "bytes": 19726,
+      "sha256": "51d5595b5288559ed5dfe77407bdf72cb00ec093004606778f323e6b8a5df405"
+    },
+    {
       "path": "nana/tests/test_p1b_minimal.py",
       "source": "nana-core",
       "bytes": 5424,
       "sha256": "dc85ac8e80c5c79f19062af2ea17d177e611572142b92f845bca9765726ca32d"
-    },
-    {
-      "path": "nana/tests/test_public_grounding_p1b_hotpath.py",
-      "source": "nana-core",
-      "bytes": 38944,
-      "sha256": "ef25125dc6a6f6b54aca5a80b5155fe8ec5424a594a59a6e8016906c19f246e4"
     },
     {
       "path": "nana/tests/test_public_grounding_p1b.py",
@@ -3383,16 +4079,22 @@
       "sha256": "459b9766b319b7c6ac7dac08746279e668b1edb4ff74952ab1ceb73bd1e2a783"
     },
     {
-      "path": "nana/tests/test_semantic_adapter_p1a_hotpath.py",
+      "path": "nana/tests/test_public_grounding_p1b_hotpath.py",
       "source": "nana-core",
-      "bytes": 3834,
-      "sha256": "b3652c67cf7ab5bf4c71ceb02d62135bf4f5b70266febb48eebfab88266e7790"
+      "bytes": 38944,
+      "sha256": "ef25125dc6a6f6b54aca5a80b5155fe8ec5424a594a59a6e8016906c19f246e4"
     },
     {
       "path": "nana/tests/test_semantic_adapter_p1a.py",
       "source": "nana-core",
       "bytes": 19935,
       "sha256": "d54088a27c4cf2dcffd7527b9df86c6f5216c282849a904e412def015047c7d3"
+    },
+    {
+      "path": "nana/tests/test_semantic_adapter_p1a_hotpath.py",
+      "source": "nana-core",
+      "bytes": 3834,
+      "sha256": "b3652c67cf7ab5bf4c71ceb02d62135bf4f5b70266febb48eebfab88266e7790"
     },
     {
       "path": "nana/tools/canary_stream_cum3.py",
@@ -3407,16 +4109,22 @@
       "sha256": "6583e290665f1645877145971fb21604be32d43727546721a718aac1fca87f11"
     },
     {
+      "path": "nana/tools/canary_stream_cum5.py",
+      "source": "nana-core",
+      "bytes": 9321,
+      "sha256": "e625bfcfef1e10ac30b21ee182e355b9cb39df1395544db3267cf288e0aec9bc"
+    },
+    {
       "path": "nana/tools/canary_stream_cum5_owner_live.py",
       "source": "nana-core",
       "bytes": 21829,
       "sha256": "c6352bf6ef3060fd5e4c53664dd61972b0e8de9c91c97fe44403085e3ff1c2bd"
     },
     {
-      "path": "nana/tools/canary_stream_cum5.py",
+      "path": "nana/tools/observe_context_shadow.py",
       "source": "nana-core",
-      "bytes": 9321,
-      "sha256": "e625bfcfef1e10ac30b21ee182e355b9cb39df1395544db3267cf288e0aec9bc"
+      "bytes": 11678,
+      "sha256": "8289940e0c32b77c54b847de755a024b1ae2dc174ce68e43fcfe1455dca70dc1"
     },
     {
       "path": "nana/tools/run_presence_session_core.py",
@@ -3433,8 +4141,8 @@
     {
       "path": "nana/tools/run_stream_voice_host.py",
       "source": "nana-core",
-      "bytes": 39001,
-      "sha256": "b546c5d260839e95916a5f000f7ade6e77171510771f86bc8fa15e59757c8bd7"
+      "bytes": 43141,
+      "sha256": "cf310301e523e33177a2ae21ba87069e416cc4c691d4946027db47f3f087b6a9"
     },
     {
       "path": "nana/tools/smoke_stream_voice_first.py",
@@ -3445,8 +4153,8 @@
     {
       "path": "nana/tools/start_stream_voice_host.ps1",
       "source": "nana-core",
-      "bytes": 3858,
-      "sha256": "6e640be26499f5739c2e293f42c7be9b53a95fa9291588f1ea35cd22b98fe218"
+      "bytes": 4462,
+      "sha256": "cae3f30c6d0ff9c7cf555cd5bf0e7795eff0c3e33b418b04c3bedeb7890ee6d0"
     },
     {
       "path": "nana/tools/start_stream_voice_session.py",
@@ -3473,6 +4181,18 @@
       "sha256": "be958d3d7b489a3150bdf25a0fac0f1d1a26b85e11cd8bd8c11b9c3fc7aa5cd8"
     },
     {
+      "path": "nana/verify_context_runtime.py",
+      "source": "nana-core",
+      "bytes": 26129,
+      "sha256": "e818463070b87c20f81846c398f7feb3370543a74ab60095149c4aeef5f11943"
+    },
+    {
+      "path": "nana/verify_p1a_p1b.py",
+      "source": "nana-core",
+      "bytes": 6660,
+      "sha256": "c5f81ec820cbb6e489976a413ebd425e721d2941540c3e6f336ab5f298d2932d"
+    },
+    {
       "path": "nana/voice/__init__.py",
       "source": "nana-core",
       "bytes": 45,
@@ -3481,50 +4201,44 @@
     {
       "path": "nana/voice/engine.py",
       "source": "nana-core",
-      "bytes": 329188,
-      "sha256": "3aabf2e672ff472627b324f3f9d1b9366b844b2bc3888c50f76c946eb8fd1ac4"
+      "bytes": 347839,
+      "sha256": "b4558ea5e191a8268d3cbc6f505207f7fade94f855e496a984cd05c3392e4eb1"
     },
     {
       "path": "nana/voice/inline_audio_tags.py",
       "source": "nana-core",
-      "bytes": 11555,
-      "sha256": "eab36c19612c5d2a23f52d07bd98503c57ee3257dea8be75fabb2c836c5c6588"
+      "bytes": 11629,
+      "sha256": "43d398c917f4a2ccc7d6b9e0bd24416518cae220f8a5bbe123aae5f4d9c7f329"
     },
     {
       "path": "nana/voice/lipsync.py",
       "source": "nana-core",
-      "bytes": 50233,
-      "sha256": "7e24d5b442619078752639b95044452d3ba3e785730863b60040eda012940b00"
+      "bytes": 53881,
+      "sha256": "0d341add4ca1d059967a062c0a32f7a2778d2b6ad39e3d1c7f210e8ddf3005a1"
     },
     {
       "path": "requirements.txt",
       "source": "nana-core",
-      "bytes": 236,
-      "sha256": "28780871004f760701a1e078c4f0af32833e7df21d41da8b9ce4309ec8768162"
-    },
-    {
-      "path": "RUNTIME.md",
-      "source": "generated-public-runtime",
-      "bytes": 3451,
-      "sha256": "796772df0a3c7f3c3ea3a903559c83eb7c962e302ab7bdc797b2ae396d8450bc"
+      "bytes": 253,
+      "sha256": "2bf7609d457b072a24f55a1b971f3139193560340ab30e8742ad010ac4d53082"
     },
     {
       "path": "scripts/bootstrap_runtime.py",
-      "source": "generated-public-runtime",
+      "source": "public-template-or-document",
       "bytes": 1401,
       "sha256": "8ae653b05e011de39402dcc7d0fc6a6b7469e00dbe94f3d984248368822873e6"
     },
     {
       "path": "scripts/fetch_optional_assets.py",
-      "source": "generated-public-runtime",
+      "source": "public-template-or-document",
       "bytes": 1279,
       "sha256": "ccd99f555250556099511567d81ef59dcc1f3a1b9f0fdffd8f5c5d9411d8284f"
     },
     {
       "path": "scripts/smoke_public_runtime.py",
-      "source": "generated-public-runtime",
-      "bytes": 1719,
-      "sha256": "1b4a101a6d6242de2d316f35b866d16d8247a564dbaf1f8dfb68f929288e072d"
+      "source": "public-template-or-document",
+      "bytes": 2163,
+      "sha256": "39b45d09a652ab04382ecdaf9294b73b71e6b1caf68d6de2419d2d3e6b7b6638"
     }
   ]
 }

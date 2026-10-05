@@ -29,6 +29,7 @@ from nana.cli.stage_runtime_commands import handle_stage_runtime_command
 from nana.cli.status_commands import handle_status_command
 from nana.cli.vts_commands import handle_vts_command
 from nana.cli.voice_commands import handle_voice_command
+from nana.cli.web_commands import handle_web_command
 from nana.commands.help import print_command_help
 
 # === Core utilities ===
@@ -36,7 +37,7 @@ from nana.commands.router import normalize_command_text, suggest_slash_command
 from nana.runtime.priority_queue import runtime_queue
 
 
-async def handle_text(vts, voice, text, loop):
+async def handle_text(vts, voice, text, loop, *, observer=None):
     text = normalize_command_text(text)
     if not text:
         return False
@@ -82,6 +83,9 @@ async def handle_text(vts, voice, text, loop):
         return False
 
     if handle_process_command(vts, voice, text, text_lower):
+        return False
+
+    if handle_web_command(text_lower):
         return False
 
     if handle_presence_command(loop, text_lower, voice=voice):
@@ -174,4 +178,4 @@ async def handle_text(vts, voice, text, loop):
 
     from nana.cli.chat_turn_pipeline import handle_chat_turn
 
-    return await handle_chat_turn(vts, voice, text, loop, text_lower)
+    return await handle_chat_turn(vts, voice, text, loop, text_lower, observer=observer)

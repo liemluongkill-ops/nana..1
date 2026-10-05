@@ -145,6 +145,7 @@ BACKSTAGE_COMMANDS = [
     "/context-budget-status",
     "/context-budget-audit",
     "/llm-route-status",
+    "/llm-provider",
     "/model-route-status",
     "/llm-route-probe",
     "/model-route-probe",

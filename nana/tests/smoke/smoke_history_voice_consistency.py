@@ -42,6 +42,7 @@ def pipeline_fixture():
             'PRIVATE_VOICE_OVERLAP_MIN_CHARS': 30, 'PRIVATE_VOICE_TTD_CHUNK_MAX_CHARS': 200,
             'PRIVATE_VOICE_TTD_CHUNK_TARGET_CHARS': 100, 'PRIVATE_VOICE_TTD_ENABLED': False,
             'PRIVATE_VOICE_TTD_MIN_CHARS': 30, 'PRIVATE_VOICE_TTD_MIN_WORDS': 3,
+            'ELEVEN_PUBLIC_TTS_MODEL': 'eleven_v3',
         }.items():
             setattr(config, name, value)
         memory = _temporary_memory_module(directory)

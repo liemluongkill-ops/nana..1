@@ -20,6 +20,58 @@ from nana.runtime.persona_boundary import resolve_persona_boundary, sanitize_pub
 from nana.runtime.identity import format_identity_block, load_identity, resolve_user
 
 
+def _autonomy_context(values, *, public=False, event_id="autonomy-smoke"):
+    from nana.runtime.context_autonomy import (
+        PrivateOwnerAutonomyAuthority,
+        PublicAutonomyAuthority,
+        audience_fields,
+        freeze_autonomy_snapshot,
+        resolve_autonomy_audience,
+    )
+    if public:
+        from nana.autonomy.observer import RealObserver
+        from nana.runtime.public_context_boundary import PublicEventScope
+        from nana.runtime.public_identity import CanonicalPublicIdentity
+        identity = CanonicalPublicIdentity("youtube", "viewer-smoke", "youtube:viewer-smoke")
+        scope = PublicEventScope(
+            "youtube", "room-smoke", "session-smoke", event_id, "Minh", identity,
+        )
+        allowed = (
+            "active_zone", "active_app", "time", "user_is_typing",
+            "game_active", "command_in_flight", "audio_busy",
+            "scene_relevance", "silence_duration_s", "silence_window_s",
+            "forced_mode", "jitter_value", "web_context", "attention_window",
+        )
+        caller_state = {
+            "platform": "youtube",
+            "room_id": "room-smoke",
+            "stream_session_id": "session-smoke",
+            "event_id": event_id,
+            **{key: values[key] for key in allowed if key in values},
+        }
+        authority = PublicAutonomyAuthority(scope, caller_state)
+        return RealObserver(
+            clock=lambda: 1000.0,
+            wall_clock=lambda: 1000.0,
+            audience_authority=authority,
+        ).get_context()
+    authority = PrivateOwnerAutonomyAuthority()
+    audience = resolve_autonomy_audience(authority)
+    payload = {
+        **values,
+        "audience": audience_fields(audience),
+        "audience_resolved": True,
+        "stream_stage_policy_gate": public,
+    }
+    snapshot = freeze_autonomy_snapshot(
+        audience=audience,
+        payload=payload,
+        captured_wall_time=1000.0,
+        captured_monotonic_time=1000.0,
+    )
+    return {**payload, "_autonomy_snapshot": snapshot}
+
+
 class LivestreamIdentityTests(unittest.TestCase):
     def test_destination_gate(self):
         for source in ('youtube', 'youtube_live_chat', 'twitch', 'livestream', ' YouTube '):
@@ -149,7 +201,8 @@ class LivestreamIdentityTests(unittest.TestCase):
     def test_banter_prompt_explicit_gate(self):
         from nana.autonomy.llm_banter import _build_prompt
         normal,_ = _build_prompt('stream_host', {}, {})
-        live,_ = _build_prompt('stream_host', {'stream_stage_policy_gate':True}, {})
+        live_context = _autonomy_context({}, public=True, event_id="prompt-smoke")
+        live,_ = _build_prompt('stream_host', live_context, {})
         self.assertNotIn(STAGE_NAME, normal)
         self.assertTrue(live.startswith('LIVESTREAM NAME'))
         self.assertIn(STAGE_NAME,live)
@@ -174,9 +227,11 @@ class LivestreamIdentityTests(unittest.TestCase):
                  'audio_busy':False,'mood_affection':.7,'scene_relevance':.9,'silence_duration_s':999.,
                  'silence_window_s':60.,'jitter_value':.9,'web_context':{},'attention_window':'browse_active'}
         with patch.object(stream_state,'get_stream_state',return_value=state):
-            loop._observer.get_context=lambda:dict(context)
+            loop._observer.get_context=lambda:_autonomy_context(context)
             self.assertEqual(loop.tick()['thought'].text,'Nana đang nghe.')
-            loop._observer.get_context=lambda:{**context,'stream_stage_policy_gate':True}
+            loop._observer.get_context=lambda:_autonomy_context(
+                context, public=True, event_id="output-smoke",
+            )
             decision=loop.tick()
             self.assertTrue(decision['accepted'],decision)
             self.assertEqual(decision['thought'].text,'Mình đang nghe.')

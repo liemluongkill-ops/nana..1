@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#090b0c" />
+    <link rel="icon" href="data:," />
+    <title>Nana</title>
+  </head>
+  <body>
+    <main id="app" class="avatar-stage">
+      <canvas id="unity-canvas" tabindex="-1" aria-label="Nana 3D"></canvas>
+
+      <button
+        id="settings-button"
+        class="settings-launcher"
+        type="button"
+        title="Cài đặt"
+        aria-label="Mở cài đặt"
+        aria-expanded="false"
+      >
+        <i data-lucide="settings"></i>
+      </button>
+
+      <div id="chat-preview" class="chat-preview" aria-live="off" aria-label="Tin nhắn xem trước"></div>
+      <div class="core-connection" aria-live="polite"><span id="connection-status">Chưa kết nối Nana</span><span id="voice-result-status"></span></div>
+      <div id="assistant-announcement" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+      <form id="chat-composer" class="chat-composer" aria-label="Trò chuyện với Nana">
+        <button id="add-button" class="composer-button" type="button" title="Thêm" aria-label="Thêm" disabled>
+          <i data-lucide="plus"></i>
+        </button>
+
+        <div id="conversation-status" class="conversation-status" role="status" aria-live="polite" hidden>
+          <span class="status-bars" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span id="conversation-status-label">Nana đang nghĩ...</span>
+        </div>
+
+        <textarea
+          id="chat-input"
+          rows="1"
+          maxlength="4000"
+          placeholder="Nhắn cho Nana..."
+          aria-label="Nhắn cho Nana"
+        ></textarea>
+
+        <div id="voice-status" class="voice-status" aria-hidden="true">
+          <span class="voice-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+          <span id="voice-status-label">Đang nghe...</span>
+        </div>
+
+        <div class="composer-actions">
+          <button id="microphone-button" disabled class="composer-button" type="button" title="Mic chưa khả dụng" aria-label="Mic chưa khả dụng" aria-pressed="false">
+            <i data-lucide="mic"></i>
+          </button>
+          <button id="voice-mode-button" disabled class="voice-button" type="button" title="Điều khiển voice chưa khả dụng" aria-label="Điều khiển voice chưa khả dụng" aria-pressed="false">
+            <i data-lucide="audio-lines"></i>
+          </button>
+          <button id="send-button" class="send-button" type="submit" title="Gửi" aria-label="Gửi tin nhắn">
+            <i data-lucide="arrow-up"></i>
+          </button>
+        </div>
+      </form>
+
+      <section id="loading" class="loading-layer" role="status" aria-live="polite">
+        <div class="loading-mark" aria-hidden="true">N</div>
+        <p id="loading-label">Đang mở không gian của Nana</p>
+        <div class="progress-track" aria-hidden="true">
+          <span id="progress-bar"></span>
+        </div>
+        <span id="loading-detail">0%</span>
+      </section>
+
+      <section id="error-layer" class="error-layer" role="alert" hidden>
+        <strong>Chưa thể tải avatar</strong>
+        <span id="error-message"></span>
+        <button id="retry-button" type="button">Thử lại</button>
+      </section>
+
+      <section id="settings-view" class="settings-view" aria-label="Cài đặt Nana" hidden>
+        <aside class="settings-sidebar">
+          <button id="back-to-app" class="back-button" type="button">
+            <i data-lucide="arrow-left"></i>
+            <span>Quay lại ứng dụng</span>
+          </button>
+
+          <label class="settings-search" for="settings-search-input">
+            <i data-lucide="search"></i>
+            <input id="settings-search-input" type="search" placeholder="Tìm cài đặt..." autocomplete="off" />
+          </label>
+
+          <span class="nav-label">Ứng dụng</span>
+          <nav class="settings-nav" aria-label="Danh mục cài đặt">
+            <button type="button" class="nav-item active" data-settings-section="general">
+              <i data-lucide="settings-2"></i><span>Chung</span>
+            </button>
+            <button type="button" class="nav-item" data-settings-section="appearance">
+              <i data-lucide="palette"></i><span>Giao diện</span>
+            </button>
+            <button type="button" class="nav-item" data-settings-section="avatar">
+              <i data-lucide="user-round"></i><span>Avatar</span>
+            </button>
+            <button type="button" class="nav-item" data-settings-section="chat">
+              <i data-lucide="message-circle"></i><span>Trò chuyện</span>
+            </button>
+            <button type="button" class="nav-item" data-settings-section="voice">
+              <i data-lucide="mic"></i><span>Giọng nói</span>
+            </button>
+          </nav>
+        </aside>
+
+        <div class="settings-content">
+          <header class="settings-heading">
+            <div>
+              <span id="settings-eyebrow">Ứng dụng</span>
+              <h1 id="settings-title">Chung</h1>
+            </div>
+            <button id="close-settings" class="icon-button" type="button" title="Đóng" aria-label="Đóng cài đặt">
+              <i data-lucide="x"></i>
+            </button>
+          </header>
+
+          <div id="settings-empty" class="settings-empty" hidden>
+            <i data-lucide="search-x"></i>
+            <span>Không tìm thấy cài đặt phù hợp</span>
+          </div>
+
+          <section class="settings-panel active" data-settings-panel="general" data-search-terms="chung khởi động cửa sổ ghi nhớ toàn màn hình">
+            <div class="settings-group">
+              <h2>Khởi động</h2>
+              <label class="setting-row">
+                <span><strong>Màn hình mặc định</strong><small>Mở trực tiếp không gian của Nana</small></span>
+                <select id="startup-view">
+                  <option value="avatar">Nana 3D</option>
+                  <option value="chat" disabled>Trò chuyện (sắp tới)</option>
+                </select>
+              </label>
+              <label class="setting-row">
+                <span><strong>Ghi nhớ kích thước cửa sổ</strong><small>Giữ lại khung app của lần mở trước</small></span>
+                <input id="remember-window" class="toggle" type="checkbox" checked />
+              </label>
+              <label class="setting-row">
+                <span><strong>Mở toàn màn hình</strong><small>Dùng toàn bộ màn hình khi khởi động</small></span>
+                <input id="start-fullscreen" class="toggle" type="checkbox" />
+              </label>
+            </div>
+          </section>
+
+          <section class="settings-panel" data-settings-panel="appearance" data-search-terms="giao diện chủ đề tối cỡ chữ chuyển động">
+            <div class="settings-group">
+              <h2>Hiển thị</h2>
+              <label class="setting-row">
+                <span><strong>Chủ đề</strong><small>Giao diện của ứng dụng</small></span>
+                <select id="theme-select">
+                  <option value="dark">Tối</option>
+                </select>
+              </label>
+              <label class="setting-row range-setting">
+                <span><strong>Tỷ lệ giao diện</strong><small>Kích thước bảng và điều khiển</small></span>
+                <output id="ui-scale-value">100%</output>
+                <input id="ui-scale" type="range" min="0.9" max="1.15" step="0.05" value="1" />
+              </label>
+              <label class="setting-row">
+                <span><strong>Giảm chuyển động giao diện</strong><small>Tắt hiệu ứng chuyển cảnh của app</small></span>
+                <input id="reduce-motion" class="toggle" type="checkbox" />
+              </label>
+            </div>
+          </section>
+
+          <section class="settings-panel" data-settings-panel="avatar" data-search-terms="avatar model off white camera khung hình zoom thu phóng trượt dọc góc ngang góc cao idle chớp mắt miệng obs browser source nền trong suốt">
+            <div class="settings-group">
+              <h2>Model</h2>
+              <div class="setting-row static-row">
+                <span><strong>Trang phục</strong><small>Model trình diễn hiện tại</small></span>
+                <span class="value-badge">Off White</span>
+              </div>
+            </div>
+
+            <div class="settings-group">
+              <h2>Khung hình</h2>
+              <div class="camera-presets" role="group" aria-label="Cỡ khung hình">
+                <button type="button" data-camera-preset="portrait"><i data-lucide="scan-face"></i><span>Cận</span></button>
+                <button type="button" data-camera-preset="waist"><i data-lucide="frame"></i><span>Nửa người</span></button>
+                <button type="button" data-camera-preset="full"><i data-lucide="person-standing"></i><span>Toàn thân</span></button>
+              </div>
+              <label class="setting-row range-setting">
+                <span><strong>Thu phóng</strong><small>Khoảng cách camera</small></span>
+                <output id="camera-zoom-value">40%</output>
+                <input id="camera-zoom" type="range" min="0.2" max="1" step="0.01" value="0.4" />
+              </label>
+              <label class="setting-row range-setting">
+                <span><strong>Trượt dọc</strong><small>Vị trí Nana trong khung</small></span>
+                <output id="camera-height-value">88%</output>
+                <input id="camera-height" type="range" min="0.05" max="0.95" step="0.01" value="0.88" />
+              </label>
+              <label class="setting-row range-setting">
+                <span><strong>Góc ngang</strong><small>Góc camera theo chiều ngang</small></span>
+                <output id="camera-yaw-value">0°</output>
+                <input id="camera-yaw" type="range" min="-180" max="180" step="1" value="0" />
+              </label>
+              <label class="setting-row range-setting">
+                <span><strong>Góc cao</strong><small>Góc camera theo chiều dọc</small></span>
+                <output id="camera-pitch-value">0°</output>
+                <input id="camera-pitch" type="range" min="-15" max="15" step="1" value="0" />
+              </label>
+            </div>
+
+            <div class="settings-group">
+              <h2>Chuyển động</h2>
+              <label class="setting-row">
+                <span><strong>Idle tự nhiên</strong><small>Chuyển động nhẹ khi Nana đứng yên</small></span>
+                <input id="idle-toggle" class="toggle" type="checkbox" checked />
+              </label>
+              <label class="setting-row">
+                <span><strong>Chớp mắt</strong><small>Giữ chuyển động mắt tự nhiên</small></span>
+                <input id="blink-toggle" class="toggle" type="checkbox" checked />
+              </label>
+              <label class="setting-row range-setting">
+                <span><strong>Thời gian quay</strong><small>Nhịp chuyển động đầu</small></span>
+                <output id="move-speed-value">0.80s</output>
+                <input id="move-speed" type="range" min="0.3" max="1.5" step="0.05" value="0.8" />
+              </label>
+              <label class="setting-row range-setting">
+                <span><strong>Biên độ idle</strong><small>Khoảng quay đầu khi đứng yên</small></span>
+                <output id="idle-yaw-value">8°</output>
+                <input id="idle-yaw" type="range" min="0" max="15" step="1" value="8" />
+              </label>
+              <label class="setting-row range-setting">
+                <span><strong>Độ dẫn của mắt</strong><small>Mức mắt đi trước chuyển động đầu</small></span>
+                <output id="eye-lead-value">0.55</output>
+                <input id="eye-lead" type="range" min="0.2" max="1.2" step="0.05" value="0.55" />
+              </label>
+              <label class="setting-row range-setting">
+                <span><strong>Mở miệng thử</strong><small>Kiểm tra blendshape tại chỗ</small></span>
+                <output id="mouth-test-value">0%</output>
+                <input id="mouth-test" type="range" min="0" max="40" step="1" value="0" />
+              </label>
+            </div>
+
+            <div class="settings-group obs-settings-group">
+              <h2>Avatar cho OBS</h2>
+              <div class="setting-row static-row">
+                <span>
+                  <strong>Browser Source riêng</strong>
+                  <small>Chỉ xuất Nana, không chat hay âm thanh. Âm thanh vẫn dùng nguồn Nana Voice trong OBS.</small>
+                </span>
+                <span class="value-badge"><i data-lucide="monitor-up"></i> 1920 × 1080</span>
+              </div>
+              <label class="setting-row range-setting">
+                <span><strong>Thu phóng OBS</strong><small>Khung riêng, không đổi camera của app</small></span>
+                <output id="obs-camera-zoom-value">40%</output>
+                <input id="obs-camera-zoom" type="range" min="0.2" max="1" step="0.01" value="0.4" />
+              </label>
+              <label class="setting-row range-setting">
+                <span><strong>Trượt dọc OBS</strong><small>Vị trí Nana trong nguồn OBS</small></span>
+                <output id="obs-camera-height-value">88%</output>
+                <input id="obs-camera-height" type="range" min="0.05" max="0.95" step="0.01" value="0.88" />
+              </label>
+              <label class="setting-row range-setting">
+                <span><strong>Góc ngang OBS</strong><small>Góc riêng của Browser Source</small></span>
+                <output id="obs-camera-yaw-value">0°</output>
+                <input id="obs-camera-yaw" type="range" min="-180" max="180" step="1" value="0" />
+              </label>
+              <label class="setting-row range-setting">
+                <span><strong>Góc cao OBS</strong><small>Góc dọc riêng của Browser Source</small></span>
+                <output id="obs-camera-pitch-value">0°</output>
+                <input id="obs-camera-pitch" type="range" min="-15" max="15" step="1" value="0" />
+              </label>
+              <div class="obs-url-row">
+                <label for="obs-url"><strong>URL Browser Source</strong></label>
+                <input id="obs-url" type="text" readonly spellcheck="false" />
+                <small>Đổi khung thì sao chép URL mới vào OBS và tải lại nguồn.</small>
+              </div>
+              <div class="obs-actions">
+                <button id="obs-use-current" type="button"><i data-lucide="frame"></i><span>Dùng khung hiện tại</span></button>
+                <button id="obs-open-preview" type="button"><i data-lucide="external-link"></i><span>Mở xem trước</span></button>
+                <button id="obs-copy-url" class="primary" type="button"><i data-lucide="copy"></i><span>Sao chép URL</span></button>
+              </div>
+              <p id="obs-url-status" class="obs-url-status" role="status" aria-live="polite"></p>
+            </div>
+          </section>
+
+          <section class="settings-panel" data-settings-panel="chat" data-search-terms="trò chuyện chat enter phụ đề lịch sử thanh nhập">
+            <div class="settings-group">
+              <h2>Thanh trò chuyện</h2>
+              <label class="setting-row">
+                <span><strong>Gửi bằng Enter</strong><small>Shift + Enter để xuống dòng</small></span>
+                <input id="send-on-enter" class="toggle" type="checkbox" checked />
+              </label>
+              <label class="setting-row">
+                <span><strong>Hiện phụ đề của Nana</strong><small>Hiện lời nói ngay trên thanh nhập</small></span>
+                <input id="show-subtitles" class="toggle" type="checkbox" checked />
+              </label>
+              <label class="setting-row">
+                <span><strong>Vị trí thanh nhập</strong><small>Vị trí trên sân khấu 3D</small></span>
+                <select id="composer-position"><option value="bottom">Dưới cùng</option></select>
+              </label>
+            </div>
+          </section>
+
+          <section class="settings-panel" data-settings-panel="voice" data-search-terms="giọng nói voice micro microphone tự nghe bấm nói">
+            <div class="settings-group">
+              <h2>Đầu vào</h2>
+              <label class="setting-row">
+                <span><strong>Microphone</strong><small>Thiết bị dùng khi trò chuyện bằng giọng nói</small></span>
+                <select id="microphone-select"><option value="system">Mặc định hệ thống</option></select>
+              </label>
+              <label class="setting-row">
+                <span><strong>Bấm để nói</strong><small>Chỉ nghe khi giữ nút micro</small></span>
+                <input id="push-to-talk" class="toggle" type="checkbox" checked />
+              </label>
+              <label class="setting-row">
+                <span><strong>Tự động nghe tiếp</strong><small>Mở lại micro sau khi Nana nói xong</small></span>
+                <input id="auto-listen" class="toggle" type="checkbox" />
+              </label>
+            </div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

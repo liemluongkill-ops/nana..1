@@ -29,17 +29,21 @@ class VoiceEnginePublicPlaybackPort:
         engine_factory: Callable[[], Any] | None = None,
         clock: Callable[[], float] = time.time,
         output_stream_factory: Callable[..., Any] | None = None,
+        visual_signal_store: Any | None = None,
         assume_ready: bool = False,
     ) -> None:
         self._engine_factory = engine_factory
         self._clock = clock
         self._output_stream_factory = output_stream_factory
+        self._visual_signal_store = visual_signal_store
         self._assume_ready = bool(assume_ready)
         self._engine = None
         self._active_playback_id: str | None = None
         self._last_playback_id: str | None = None
         self._cancel_requested = False
         self._last_stop_confirmed = True
+        self._active_visual_identity = None
+        self._visual_sequence = 0
         self._lock = threading.RLock()
 
     def ready(self) -> PlaybackReadiness:
@@ -95,6 +99,8 @@ class VoiceEnginePublicPlaybackPort:
             self._cancel_requested = False
             self._last_stop_confirmed = False
 
+        visual_identity = self._begin_visual_playback(request)
+
         engine = None
 
         def continue_allowed() -> bool:
@@ -126,6 +132,9 @@ class VoiceEnginePublicPlaybackPort:
                 frame_bytes=int(frame_bytes),
             )
             return on_first_audio(evidence) is True
+
+        def sink_frame(**payload: Any) -> None:
+            self._publish_visual_frame(request.playback_id, visual_identity, payload)
 
         try:
             if not continue_allowed():
@@ -168,6 +177,7 @@ class VoiceEnginePublicPlaybackPort:
                 before_provider=continue_allowed,
                 before_first_audio=continue_allowed,
                 on_first_audio=first_audio,
+                on_sink_frame=sink_frame,
                 output_stream_factory=self._output_stream_factory,
             )
             engine_state = str(getattr(result, "state", "ambiguous"))
@@ -222,6 +232,9 @@ class VoiceEnginePublicPlaybackPort:
                 release_engine = bool(self._last_stop_confirmed)
                 self._active_playback_id = None
                 self._cancel_requested = False
+                if self._active_visual_identity == visual_identity:
+                    self._active_visual_identity = None
+                    self._visual_sequence = 0
                 if release_engine and self._engine is engine:
                     self._engine = None
             if release_engine and engine is not None:
@@ -234,7 +247,9 @@ class VoiceEnginePublicPlaybackPort:
             active = self._active_playback_id == playback_id
             if active:
                 self._cancel_requested = True
+            visual_identity = self._active_visual_identity if active else None
             engine = self._engine
+        self._emit_visual_terminal(visual_identity, "cancelled")
         if engine is None:
             if active:
                 with self._lock:
@@ -277,6 +292,84 @@ class VoiceEnginePublicPlaybackPort:
             except Exception:
                 pass
 
+    def _begin_visual_playback(self, request: PublicVoicePlaybackRequest):
+        store = self._visual_signal_store
+        if store is None:
+            return None
+        try:
+            from nana.runtime.stream_public_visual_signals import (
+                PUBLIC_EXPRESSION_ACTIONS,
+                identity_from_playback_request,
+            )
+
+            identity = identity_from_playback_request(request)
+            action = None
+            try:
+                from nana.runtime.avatar_reaction_policy import (
+                    action_block_reason,
+                    select_reply_cue,
+                )
+
+                cue = select_reply_cue(request.artifact.text)
+                candidate = str(getattr(cue, "action", "") or "")
+                if (
+                    candidate in PUBLIC_EXPRESSION_ACTIONS
+                    and not action_block_reason(candidate)
+                ):
+                    action = candidate
+            except Exception:
+                action = None
+            if store.begin_playback(identity, expression_action=action) is not True:
+                return None
+            with self._lock:
+                self._active_visual_identity = identity
+                self._visual_sequence = 0
+            return identity
+        except Exception:
+            return None
+
+    def _publish_visual_frame(
+        self,
+        playback_id: str,
+        identity: Any,
+        payload: dict[str, Any],
+    ) -> None:
+        store = self._visual_signal_store
+        if store is None or identity is None:
+            return
+        with self._lock:
+            if (
+                self._active_playback_id != playback_id
+                or self._active_visual_identity != identity
+                or self._cancel_requested
+            ):
+                return
+            sequence = self._visual_sequence + 1
+        try:
+            accepted = store.publish_frame(
+                identity,
+                sequence=sequence,
+                open_value=payload.get("open_value"),
+                energy=payload.get("energy"),
+                viseme=payload.get("viseme"),
+                speaking=payload.get("speaking"),
+            ) is True
+        except Exception:
+            accepted = False
+        if accepted:
+            with self._lock:
+                if self._active_visual_identity == identity:
+                    self._visual_sequence = sequence
+
+    def _emit_visual_terminal(self, identity: Any, reason: str) -> None:
+        store = self._visual_signal_store
+        if store is None or identity is None:
+            return
+        try:
+            store.terminal(identity, reason)
+        except Exception:
+            pass
+
     def _completion(
         self,
         request: PublicVoicePlaybackRequest,
@@ -295,7 +388,7 @@ class VoiceEnginePublicPlaybackPort:
     ) -> AudioCompletionResult:
         requested_i = max(0, int(requested))
         played_i = max(0, int(played))
-        return AudioCompletionResult(
+        result = AudioCompletionResult(
             state=state,
             audio_completed=bool(audio_completed),
             requested_segments=requested_i,
@@ -319,6 +412,21 @@ class VoiceEnginePublicPlaybackPort:
             completed_at=max(float(self._clock()), request.requested_at),
             stop_confirmed=bool(stop_confirmed),
         )
+        visual_reason = (
+            "completed"
+            if state == "completed" and audio_completed
+            else "cancelled"
+            if state == "cancelled"
+            else "failed"
+        )
+        with self._lock:
+            visual_identity = (
+                self._active_visual_identity
+                if self._active_playback_id == request.playback_id
+                else None
+            )
+        self._emit_visual_terminal(visual_identity, visual_reason)
+        return result
 
 
 __all__ = ["VoiceEnginePublicPlaybackPort"]

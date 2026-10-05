@@ -62,6 +62,7 @@ _DEFAULT_ENABLED = True
 _DEFAULT_TIMEOUT_S = 8.0
 _HARD_MAX_PROMPT_CHARS = 1800   # do not blow up the prompt
 _HARD_MAX_RESPONSE_CHARS = 280  # banter should be 1-2 short sentences
+_CONTEXT_MODES = frozenset({"legacy", "shadow", "canonical"})
 
 
 @dataclass
@@ -105,6 +106,25 @@ def _env_temperature() -> float:
         return max(0.0, min(1.5, v))
     except ValueError:
         return _DEFAULT_TEMPERATURE
+
+
+def _context_mode() -> str:
+    mode = str(os.environ.get("NANA_CONTEXT_AUTONOMY_MODE", "legacy") or "")
+    mode = mode.strip().lower()
+    if mode not in _CONTEXT_MODES:
+        raise ValueError("invalid_context_mode")
+    return mode
+
+
+def _trusted_snapshot(ctx_dict: object):
+    if not isinstance(ctx_dict, dict):
+        return None
+    try:
+        from nana.runtime.context_autonomy import require_autonomy_snapshot
+
+        return require_autonomy_snapshot(ctx_dict.get("_autonomy_snapshot"))
+    except Exception:
+        return None
 
 
 # Mode-specific style hints. We do not pass an enum; we pass a short
@@ -170,7 +190,15 @@ class LLMBanter:
             self.stats["fallback"] += 1
             return None
 
-        # Build prompt.
+        try:
+            context_mode = _context_mode()
+        except ValueError:
+            self.stats["errors"] += 1
+            return None
+
+        snapshot = _trusted_snapshot(ctx_dict)
+
+        # Build the corresponding legacy prompt from the same frozen capture.
         try:
             prompt, used_web = _build_prompt(mode, ctx_dict, web_ctx)
         except Exception:
@@ -181,7 +209,51 @@ class LLMBanter:
         if len(prompt) > _HARD_MAX_PROMPT_CHARS:
             prompt = prompt[:_HARD_MAX_PROMPT_CHARS]
 
-        key = self._hash(prompt.encode("utf-8", errors="ignore")).hexdigest()
+        compiled = None
+        if context_mode in {"shadow", "canonical"} and snapshot is not None:
+            try:
+                from nana.runtime.context_autonomy import compile_autonomy_context
+
+                compiled = compile_autonomy_context(
+                    snapshot,
+                    mode=mode,
+                    model=_env_model(),
+                )
+            except Exception:
+                compiled = None
+        if context_mode == "canonical":
+            if compiled is None or compiled.manifest.candidate_overflow:
+                self.stats["fallback"] += 1
+                return None
+            try:
+                from nana.runtime.context_runtime import (
+                    require_autonomy_canonical_dispatch_ready,
+                )
+
+                require_autonomy_canonical_dispatch_ready(compiled)
+            except Exception:
+                self.stats["fallback"] += 1
+                return None
+
+        try:
+            if snapshot is None:
+                audience_key = "unresolved"
+            else:
+                from nana.runtime.context_autonomy import autonomy_snapshot_cache_key
+
+                audience_key = autonomy_snapshot_cache_key(snapshot)
+        except Exception:
+            self.stats["errors"] += 1
+            return None
+        content_key = (
+            compiled.full_context_hash
+            if context_mode == "canonical" and compiled is not None
+            else prompt
+        )
+        key_material = "\x1f".join(
+            (context_mode, mode, _env_model(), audience_key, content_key)
+        )
+        key = self._hash(key_material.encode("utf-8", errors="ignore")).hexdigest()
         now = self._clock()
 
         with self._lock:
@@ -193,9 +265,19 @@ class LLMBanter:
                 self.stats["cached"] += 1
                 return self._last_result
 
-        # Try the LLM. All errors map to None so the loop falls back.
+        legacy_messages = _legacy_messages(prompt)
+        if context_mode == "shadow" and compiled is not None:
+            try:
+                _emit_shadow_context(compiled, legacy_messages)
+            except Exception:
+                pass
+
+        # Try the selected transport. All errors map to None so the loop falls back.
         t0 = self._clock()
-        text, reason = _call_llm(mode, prompt)
+        if context_mode == "canonical":
+            text, reason = _call_compiled(compiled)
+        else:
+            text, reason = _call_llm(mode, prompt)
         duration = self._clock() - t0
 
         if not text or reason != "ok":
@@ -254,6 +336,10 @@ def _build_prompt(mode: str, ctx_dict: dict, web_ctx: dict) -> tuple[str, bool]:
     error; runtime failures inside _call_llm map to None.
     """
     hint = _MODE_HINT.get(mode, _MODE_HINT["idle_banter"])
+    trusted_snapshot = _trusted_snapshot(ctx_dict)
+    if trusted_snapshot is not None:
+        ctx_dict = trusted_snapshot.payload
+        web_ctx = ctx_dict.get("web_context") or {}
 
     zone = ctx_dict.get("active_zone") or "unknown"
     app = ctx_dict.get("active_app") or ""
@@ -301,9 +387,27 @@ def _build_prompt(mode: str, ctx_dict: dict, web_ctx: dict) -> tuple[str, bool]:
         mood_word = "mệt / buồn"
 
     identity_line = "Bạn là Nana, một VTuber/AI companion Việt Nam, đang nói chuyện với Ba (user).\n"
-    if ctx_dict.get("stream_stage_policy_gate") is True:
+    public_audience = False
+    if trusted_snapshot is not None:
+        from nana.runtime.context_contracts import Lane
+        from nana.runtime.livestream_identity import is_livestream_source
+
+        audience = trusted_snapshot.audience
+        public_audience = audience.lane is Lane.PUBLIC_STAGE
+        trusted_livestream = (
+            public_audience
+            and is_livestream_source(audience.public_scope.platform)
+        )
+    else:
+        trusted_livestream = False
+    if trusted_livestream:
         from nana.runtime.livestream_identity import stage_prompt_block
         identity_line = stage_prompt_block() + "\nBạn đang nói với người xem trên livestream.\n"
+    elif public_audience:
+        identity_line = (
+            "Bạn là Nana, một AI VTuber Việt Nam, đang nói với người xem "
+            "trong kênh công khai. Không dùng quan hệ riêng Ba/con.\n"
+        )
     prompt = (
         identity_line +
         f"Mode: {mode}\n"
@@ -343,18 +447,7 @@ def _call_llm(mode: str, prompt: str) -> tuple[Optional[str], str]:
         return None, f"import_error: {type(exc).__name__}"
 
     model = _env_model()
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                "Bạn là Nana, một VTuber/AI companion Việt Nam. "
-                "Trả lời đúng 1 câu ngắn (1-2 dòng) tiếng Việt. "
-                "Tự nhiên, ấm áp, không hứa hẹn, không spam. "
-                "Không bao giờ bịa nội dung ngoài context được cung cấp."
-            ),
-        },
-        {"role": "user", "content": prompt},
-    ]
+    messages = _legacy_messages(prompt)
 
     try:
         text, status = call_llmgate_messages(
@@ -369,6 +462,76 @@ def _call_llm(mode: str, prompt: str) -> tuple[Optional[str], str]:
     if text is None or status != "ok":
         return None, f"llm_failed: {status}"
     return text, "ok"
+
+
+def _legacy_messages(prompt: str) -> list[dict[str, str]]:
+    return [
+        {
+            "role": "system",
+            "content": (
+                "Bạn là Nana, một VTuber/AI companion Việt Nam. "
+                "Trả lời đúng 1 câu ngắn (1-2 dòng) tiếng Việt. "
+                "Tự nhiên, ấm áp, không hứa hẹn, không spam. "
+                "Không bao giờ bịa nội dung ngoài context được cung cấp."
+            ),
+        },
+        {"role": "user", "content": prompt},
+    ]
+
+
+def _call_compiled(compiled) -> tuple[Optional[str], str]:
+    try:
+        from nana.brain.llmgate_client import call_llmgate_compiled
+    except Exception as exc:
+        return None, f"import_error: {type(exc).__name__}"
+
+    try:
+        text, status, _receipt = call_llmgate_compiled(
+            compiled,
+            max_tokens=_env_max_tokens(),
+            temperature=_env_temperature(),
+        )
+    except Exception as exc:
+        return None, f"client_exception: {type(exc).__name__}"
+
+    if text is None or status != "ok":
+        return None, f"llm_failed: {status}"
+    return text, "ok"
+
+
+def _emit_shadow_context(compiled, legacy_messages) -> None:
+    """Emit bounded candidate/sent metadata; telemetry cannot affect output."""
+
+    try:
+        from nana.runtime.context_contracts import CompiledMessage
+        from nana.runtime.context_telemetry import (
+            emit_context_telemetry,
+            emit_sent_context_telemetry,
+        )
+
+        manifest = compiled.manifest
+        emit_context_telemetry(
+            compiled,
+            label="candidate_context",
+            production_bound=False,
+        )
+        emit_sent_context_telemetry(
+            tuple(
+                CompiledMessage(role=item["role"], content=item["content"])
+                for item in legacy_messages
+            ),
+            request_id=manifest.request_id,
+            correlation_id=manifest.correlation_id,
+            capture_id=manifest.capture_id,
+            snapshot_revision=manifest.snapshot_revision,
+            model=manifest.model,
+            resolved_model=manifest.resolved_model,
+            resolved_provider=manifest.resolved_provider,
+            lane=manifest.lane,
+            route=manifest.route,
+        )
+    except Exception:
+        pass
 
 
 # ---- module-level singleton ------------------------------------------------

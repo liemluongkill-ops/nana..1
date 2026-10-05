@@ -73,6 +73,7 @@ class _FakePcmLipsync:
         stall_timeout_s,
         on_state=None,
         on_done=None,
+        on_first_audio=None,
         **_kwargs,
     ):
         self.pcm_calls += 1
@@ -94,6 +95,8 @@ class _FakePcmLipsync:
                 pcm_queue.task_done()
                 if not started:
                     started = True
+                    if on_first_audio is not None:
+                        on_first_audio()
                     if on_state is not None:
                         on_state("playing")
 

@@ -162,6 +162,17 @@ def _smooth_stream_edge(data, samplerate, *, fade_in=False, fade_out=False, fade
     return smoothed
 
 
+def _emit_pcm_level(callback, level):
+    if callback is None:
+        return False
+    try:
+        callback(float(level))
+    except Exception:
+        # An optional per-playback observer cannot affect audio delivery.
+        pass
+    return True
+
+
 class LipsyncManager:
     def __init__(self):
         self.mouth = 0.0
@@ -300,6 +311,8 @@ class LipsyncManager:
         *,
         before_first_audio=None,
         on_first_audio=None,
+        on_sink_frame=None,
+        on_pcm_level=None,
         emit_mouth=True,
         output_stream_factory=None,
     ):
@@ -316,6 +329,8 @@ class LipsyncManager:
             prepared.samplerate,
             before_first_audio=before_first_audio,
             on_first_audio=on_first_audio,
+            on_sink_frame=on_sink_frame,
+            on_pcm_level=on_pcm_level,
             emit_mouth=emit_mouth,
             output_stream_factory=output_stream_factory,
         )
@@ -330,6 +345,8 @@ class LipsyncManager:
         stall_timeout_s=30,
         on_state=None,
         on_done=None,
+        on_first_audio=None,
+        on_pcm_level=None,
         output_stream_factory=None,
         callback_output=False,
     ):
@@ -349,6 +366,8 @@ class LipsyncManager:
                     startup_buffer_ms=int(startup_buffer_ms),
                     stall_timeout_s=float(stall_timeout_s),
                     on_state=on_state,
+                    on_first_audio=on_first_audio,
+                    on_pcm_level=on_pcm_level,
                     output_stream_factory=output_stream_factory,
                 )
             except Exception as exc:
@@ -383,6 +402,8 @@ class LipsyncManager:
         startup_buffer_ms,
         stall_timeout_s,
         on_state=None,
+        on_first_audio=None,
+        on_pcm_level=None,
         output_stream_factory=None,
     ):
         """Play streamed PCM from a prebuffered SPSC ring via PortAudio callback."""
@@ -424,6 +445,7 @@ class LipsyncManager:
             "last_underflow_buffer_ms": None,
             "last_underflow_queue_depth": None,
             "last_underflow_decoder_done": None,
+            "pcm_level_emitted": False,
         }
 
         def _emit_state(state):
@@ -591,6 +613,17 @@ class LipsyncManager:
                 callback_state["last_underflow_queue_depth"] = None
             observed_status_underflows = current
 
+        first_audio_sent = False
+        def _note_first_audio(count):
+            nonlocal first_audio_sent
+            if count > 0 and not first_audio_sent:
+                first_audio_sent = True
+                if on_first_audio is not None:
+                    try:
+                        on_first_audio()
+                    except Exception:
+                        pass
+
         def _audio_callback(outdata, frames, time_info, status):
             del time_info
             now = time.perf_counter()
@@ -641,8 +674,13 @@ class LipsyncManager:
             if available < frames and not feeder_finished:
                 read_count = ring.read_into(channel)
                 callback_state["played_samples"] += read_count
+                _note_first_audio(read_count)
                 if read_count > 0:
                     volume = float(np.abs(channel[:read_count]).mean())
+                    callback_state["pcm_level_emitted"] = _emit_pcm_level(
+                        on_pcm_level,
+                        volume,
+                    ) or callback_state["pcm_level_emitted"]
                     mouth = min(volume * 18, 1.0)
                     mouth = callback_state["previous_mouth"] * 0.8 + mouth * 0.2
                     callback_state["previous_mouth"] = mouth
@@ -654,8 +692,13 @@ class LipsyncManager:
 
             read_count = ring.read_into(channel)
             callback_state["played_samples"] += read_count
+            _note_first_audio(read_count)
             if read_count > 0:
                 volume = float(np.abs(channel[:read_count]).mean())
+                callback_state["pcm_level_emitted"] = _emit_pcm_level(
+                    on_pcm_level,
+                    volume,
+                ) or callback_state["pcm_level_emitted"]
                 mouth = min(volume * 18, 1.0)
                 mouth = callback_state["previous_mouth"] * 0.8 + mouth * 0.2
                 callback_state["previous_mouth"] = mouth
@@ -733,6 +776,8 @@ class LipsyncManager:
                 self._set_mouth(self.mouth * 0.5)
                 time.sleep(0.01)
             self._set_mouth(0.0)
+            if callback_state["pcm_level_emitted"]:
+                _emit_pcm_level(on_pcm_level, 0.0)
 
         if abort_reason == "none" and self.stop_event.is_set():
             abort_reason = "shutdown_cancelled"
@@ -798,6 +843,8 @@ class LipsyncManager:
         startup_buffer_ms,
         stall_timeout_s,
         on_state=None,
+        on_first_audio=None,
+        on_pcm_level=None,
         output_stream_factory=None,
     ):
         buffers = deque()
@@ -899,6 +946,7 @@ class LipsyncManager:
         completed = False
         abort_reason = "none"
         previous_mouth = 0.0
+        pcm_level_emitted = False
         try:
             with self.audio_lock:
                 with stream_factory(samplerate=samplerate, channels=1, dtype="float32") as stream:
@@ -970,6 +1018,16 @@ class LipsyncManager:
                             max_feed_gap_ms = max(max_feed_gap_ms, feed_gap_ms)
                         underflowed = bool(stream.write(frame.reshape(-1, 1)))
                         output_write_calls += 1
+                        if output_write_calls == 1 and on_first_audio is not None:
+                            try:
+                                on_first_audio()
+                            except Exception:
+                                pass
+                        if on_pcm_level is not None:
+                            pcm_level_emitted = _emit_pcm_level(
+                                on_pcm_level,
+                                volume,
+                            ) or pcm_level_emitted
                         if underflowed:
                             output_underflow_count += 1
                             last_underflow_buffer_ms = (
@@ -990,6 +1048,8 @@ class LipsyncManager:
                 self._set_mouth(self.mouth * 0.5)
                 time.sleep(0.01)
             self._set_mouth(0.0)
+            if pcm_level_emitted:
+                _emit_pcm_level(on_pcm_level, 0.0)
 
         if completed:
             _emit_state("done")
@@ -1100,6 +1160,8 @@ class LipsyncManager:
         *,
         before_first_audio=None,
         on_first_audio=None,
+        on_sink_frame=None,
+        on_pcm_level=None,
         emit_mouth=True,
         output_stream_factory=None,
     ):
@@ -1124,6 +1186,7 @@ class LipsyncManager:
         abort_reason = "none"
         previous = 0.0
         sink_closed_cleanly = False
+        pcm_level_emitted = False
         try:
             with self.audio_lock:
                 with stream_factory(
@@ -1153,6 +1216,27 @@ class LipsyncManager:
                         stream.write(frame.reshape(-1, 1))
                         written_frames += 1
                         played_samples += source_samples
+                        if (
+                            emit_mouth
+                            or on_sink_frame is not None
+                            or on_pcm_level is not None
+                        ):
+                            volume = float(np.abs(frame).mean())
+                            mouth = min(volume * 18, 1.0)
+                            mouth = previous * 0.8 + mouth * 0.2
+                            previous = mouth
+                            speaking = mouth > 0.001
+                            if on_sink_frame is not None:
+                                try:
+                                    on_sink_frame(
+                                        open_value=mouth if speaking else 0.0,
+                                        energy=min(max(volume, 0.0), 1.0) if speaking else 0.0,
+                                        viseme="aa" if speaking else "sil",
+                                        speaking=speaking,
+                                    )
+                                except Exception:
+                                    # Visual observation is never audio-delivery evidence.
+                                    pass
                         if not first_audio_started:
                             first_audio_started = True
                             if on_first_audio is not None:
@@ -1163,11 +1247,12 @@ class LipsyncManager:
                                 if not accepted:
                                     abort_reason = "first_audio_receipt_rejected"
                                     break
+                        if on_pcm_level is not None:
+                            pcm_level_emitted = _emit_pcm_level(
+                                on_pcm_level,
+                                volume,
+                            ) or pcm_level_emitted
                         if emit_mouth:
-                            volume = float(np.abs(frame).mean())
-                            mouth = min(volume * 18, 1.0)
-                            mouth = previous * 0.8 + mouth * 0.2
-                            previous = mouth
                             self._set_mouth(mouth, pcm_level=volume)
                 sink_closed_cleanly = True
         except Exception as exc:
@@ -1179,6 +1264,8 @@ class LipsyncManager:
                     self._set_mouth(self.mouth * 0.5)
                     time.sleep(0.01)
                 self._set_mouth(0.0)
+            if pcm_level_emitted:
+                _emit_pcm_level(on_pcm_level, 0.0)
 
         completed = bool(
             abort_reason == "none"

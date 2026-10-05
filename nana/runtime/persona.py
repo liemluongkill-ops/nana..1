@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import time
 
 from nana.memory import memory, memory_lock, save_memory_async
@@ -70,6 +71,14 @@ FOCUS_MARKERS = [
     "nghiêm túc",
     "nghiem tuc",
 ]
+
+
+@dataclass(frozen=True, slots=True)
+class PersonaExpressionSnapshot:
+    """Pure model-facing Governor values captured without persistence."""
+
+    mode: str
+    clamp: str
 
 
 def default_persona_state():
@@ -273,6 +282,84 @@ def reset_persona(reason="manual_reset"):
 
 def persona_state_snapshot():
     return decay_persona_state()
+
+
+def capture_persona_expression_snapshot(
+    *,
+    captured_at=None,
+):
+    """Calculate mode/clamp on a local copy without normalizing owner storage."""
+
+    now = time.time() if captured_at is None else float(captured_at)
+    with memory_lock:
+        raw = memory.get("persona")
+        state = dict(raw) if isinstance(raw, dict) else {}
+        raw_sources = state.get("residue_sources")
+        state["residue_sources"] = (
+            dict(raw_sources) if isinstance(raw_sources, dict) else {}
+        )
+
+    mode = state.get("mode")
+    if mode not in VALID_PERSONA_MODES:
+        mode = "chill"
+    current = clamp_intensity(
+        state.get("personality_intensity", MODE_DEFAULT_INTENSITY[mode])
+    )
+    target = clamp_intensity(
+        state.get("target_intensity", MODE_DEFAULT_INTENSITY[mode])
+    )
+    try:
+        manual_until = float(state.get("manual_until") or 0.0)
+    except (TypeError, ValueError):
+        manual_until = 0.0
+    try:
+        last_decay = float(state.get("last_decay") or now)
+    except (TypeError, ValueError):
+        last_decay = now
+    elapsed = max(0.0, now - last_decay)
+    sources = {}
+    for key, value in state["residue_sources"].items():
+        clean_key = sanitize_residue_source(key)
+        clean_value = clamp_residue(value)
+        if clean_value:
+            sources[clean_key] = max(sources.get(clean_key, 0), clean_value)
+    residue = clamp_residue(state.get("residue_level"))
+    if residue and not sources:
+        sources["legacy"] = residue
+    residue = residue_total(sources)
+
+    if elapsed >= 30.0:
+        if manual_until and now > manual_until:
+            mode = "chill"
+            manual_until = 0.0
+            target = MODE_DEFAULT_INTENSITY[mode]
+        step = max(1, int(elapsed // 30))
+        if current > target:
+            current = max(target, current - step * 3)
+        elif current < target:
+            current = min(target, current + step * 2)
+        sources = {
+            key: next_value
+            for key, value in sources.items()
+            if (
+                next_value := max(
+                    0,
+                    value - residue_decay_amount(key, step),
+                )
+            )
+        }
+        residue = residue_total(sources)
+
+    local_state = {
+        "mode": mode,
+        "personality_intensity": current,
+        "target_intensity": target,
+        "residue_level": residue,
+    }
+    return PersonaExpressionSnapshot(
+        mode=mode,
+        clamp=temperature_clamp(local_state),
+    )
 
 
 def observe_text_for_persona(text):

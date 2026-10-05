@@ -29,6 +29,7 @@ _TRUE_LITERALS = {"1", "true", "yes", "on"}
 _FALSE_LITERALS = {"0", "false", "no", "off"}
 _AUTONOMY_DISABLED_LITERALS = {"1", "true", "yes", "on", "off"}
 _AUTONOMY_ENABLED_LITERALS = {"0", "false", "no"}
+_ALLOWED_CONTEXT_MODES = {"legacy", "shadow", "canonical"}
 _SECRET_PLACEHOLDERS = {
     "",
     "ELEVENLABS_KEY_CUA_BAN",
@@ -106,6 +107,23 @@ class StartupConfigSnapshot:
     avatar_gateway_auto_events_enabled: bool = False
     avatar_gateway_token_present: bool = False
     warudo_ws_url_present: bool = False
+    private_web_chat_enabled: bool = True
+    private_web_chat_host: str = "127.0.0.1"
+    private_web_chat_port: int = 8767
+    private_web_chat_bootstrap_ttl_seconds: float = 10.0
+    private_web_chat_lock_wait_seconds: float = 5.0
+    private_web_chat_turn_timeout_seconds: float = 120.0
+    private_web_chat_shutdown_drain_seconds: float = 15.0
+    context_private_mode: str = "legacy"
+    context_public_gpt_mode: str = "legacy"
+    context_cum2_mode: str = "legacy"
+    context_autonomy_mode: str = "legacy"
+    context_budget_policy_revision: str = ""
+    private_llm_provider: str = "llmgate"
+    private_llm_model: str = ""
+    private_llm_reasoning_effort: str = "none"
+    private_llm_provider_raw_valid: bool = True
+    private_llm_reasoning_effort_raw_valid: bool = True
 
     def to_dict(self) -> dict[str, Any]:
         """Return a serialization-safe view containing no secret material."""
@@ -168,6 +186,17 @@ def _strict_env_bool(
         return False
     errors.append(f"{name}: invalid boolean literal")
     return bool(default)
+
+
+def _strict_context_mode(
+    env: Mapping[str, str],
+    name: str,
+    errors: list[str],
+) -> str:
+    value = str(env.get(name, "legacy") or "").strip().lower()
+    if value not in _ALLOWED_CONTEXT_MODES:
+        errors.append(f"{name}: must be legacy, shadow, or canonical")
+    return value
 
 
 def _strict_env_positive_float(
@@ -253,6 +282,68 @@ def build_startup_config_snapshot(
         True,
         parse_errors,
     )
+    private_web_chat_enabled = _strict_env_bool(
+        source_env,
+        "NANA_PRIVATE_WEB_CHAT_ENABLED",
+        True,
+        parse_errors,
+    )
+    private_web_chat_host = str(
+        source_env.get("NANA_PRIVATE_WEB_CHAT_HOST", "127.0.0.1")
+    ).strip()
+    private_web_chat_port = _strict_env_positive_int(
+        source_env,
+        "NANA_PRIVATE_WEB_CHAT_PORT",
+        8767,
+        parse_errors,
+    )
+    private_web_chat_bootstrap_ttl_seconds = _strict_env_positive_float(
+        source_env,
+        "NANA_PRIVATE_WEB_CHAT_BOOTSTRAP_TTL_SECONDS",
+        10.0,
+        parse_errors,
+    )
+    private_web_chat_lock_wait_seconds = _strict_env_positive_float(
+        source_env,
+        "NANA_PRIVATE_WEB_CHAT_LOCK_WAIT_SECONDS",
+        5.0,
+        parse_errors,
+    )
+    private_web_chat_turn_timeout_seconds = _strict_env_positive_float(
+        source_env,
+        "NANA_PRIVATE_WEB_CHAT_TURN_TIMEOUT_SECONDS",
+        120.0,
+        parse_errors,
+    )
+    private_web_chat_shutdown_drain_seconds = _strict_env_positive_float(
+        source_env,
+        "NANA_PRIVATE_WEB_CHAT_SHUTDOWN_DRAIN_SECONDS",
+        15.0,
+        parse_errors,
+    )
+    context_private_mode = _strict_context_mode(
+        source_env,
+        "NANA_CONTEXT_PRIVATE_MODE",
+        parse_errors,
+    )
+    context_public_gpt_mode = _strict_context_mode(
+        source_env,
+        "NANA_CONTEXT_PUBLIC_GPT_MODE",
+        parse_errors,
+    )
+    context_cum2_mode = _strict_context_mode(
+        source_env,
+        "NANA_CONTEXT_CUM2_MODE",
+        parse_errors,
+    )
+    context_autonomy_mode = _strict_context_mode(
+        source_env,
+        "NANA_CONTEXT_AUTONOMY_MODE",
+        parse_errors,
+    )
+    context_budget_policy_revision = str(
+        source_env.get("NANA_CONTEXT_BUDGET_POLICY_REVISION", "") or ""
+    ).strip()
     bridge_poll = _strict_env_positive_float(
         source_env,
         "NANA_EXTERNAL_BRIDGE_POLL_SECONDS",
@@ -654,7 +745,42 @@ def build_startup_config_snapshot(
         avatar_gateway_auto_events_enabled=avatar_gateway_auto_events_enabled,
         avatar_gateway_token_present=avatar_gateway_token_present,
         warudo_ws_url_present=warudo_ws_url_present,
+        private_web_chat_enabled=private_web_chat_enabled,
+        private_web_chat_host=private_web_chat_host,
+        private_web_chat_port=private_web_chat_port,
+        private_web_chat_bootstrap_ttl_seconds=private_web_chat_bootstrap_ttl_seconds,
+        private_web_chat_lock_wait_seconds=private_web_chat_lock_wait_seconds,
+        private_web_chat_turn_timeout_seconds=private_web_chat_turn_timeout_seconds,
+        private_web_chat_shutdown_drain_seconds=private_web_chat_shutdown_drain_seconds,
+        context_private_mode=context_private_mode,
+        context_public_gpt_mode=context_public_gpt_mode,
+        context_cum2_mode=context_cum2_mode,
+        context_autonomy_mode=context_autonomy_mode,
+        context_budget_policy_revision=context_budget_policy_revision,
+        **_private_llm_route_fields(source_env, main_model),
     )
+
+
+_PRIVATE_LLM_PROVIDERS = {"llmgate", "openai_direct"}
+
+
+def _private_llm_route_fields(source_env: Mapping[str, str], llmgate_model: str) -> dict[str, Any]:
+    """Mirror brain/openai_direct_client env parsing for the startup line."""
+    raw_provider = str(source_env.get("NANA_PRIVATE_LLM_PROVIDER", "") or "").strip().lower()
+    provider = raw_provider if raw_provider in _PRIVATE_LLM_PROVIDERS else "llmgate"
+    raw_effort = str(source_env.get("NANA_OPENAI_DIRECT_REASONING_EFFORT", "") or "").strip().lower()
+    effort = raw_effort if raw_effort in _ALLOWED_REASONING_EFFORTS else "none"
+    if provider == "openai_direct":
+        model = str(source_env.get("NANA_OPENAI_DIRECT_MODEL", "") or "").strip() or "gpt-5.6-terra"
+    else:
+        model = llmgate_model
+    return {
+        "private_llm_provider": provider,
+        "private_llm_model": model,
+        "private_llm_reasoning_effort": effort,
+        "private_llm_provider_raw_valid": raw_provider in _PRIVATE_LLM_PROVIDERS | {""},
+        "private_llm_reasoning_effort_raw_valid": raw_effort in _ALLOWED_REASONING_EFFORTS | {""},
+    }
 
 
 def validate_startup_config(
@@ -672,6 +798,25 @@ def validate_startup_config(
             else "OPENAI_MODEL"
         )
         errors.append(f"{model_name}: required for {snapshot.provider} provider")
+    if snapshot.private_web_chat_host != "127.0.0.1":
+        errors.append("NANA_PRIVATE_WEB_CHAT_HOST: must be 127.0.0.1")
+    if snapshot.private_web_chat_port != 8767:
+        errors.append("NANA_PRIVATE_WEB_CHAT_PORT: must be 8767")
+    for name, required in (
+        ('private_web_chat_bootstrap_ttl_seconds', 10.0),
+        ('private_web_chat_lock_wait_seconds', 5.0),
+        ('private_web_chat_turn_timeout_seconds', 120.0),
+        ('private_web_chat_shutdown_drain_seconds', 15.0),
+    ):
+        if getattr(snapshot, name) != required:
+            errors.append('NANA_' + name.upper() + ': outside v1 contract')
+    if "canonical" in {
+        snapshot.context_private_mode,
+        snapshot.context_public_gpt_mode,
+        snapshot.context_cum2_mode,
+        snapshot.context_autonomy_mode,
+    }:
+        errors.append("budget_policy_unapproved")
     if not snapshot.openai_key_present:
         errors.append("OPENAI_API_KEY: missing or placeholder")
     if snapshot.autonomy_enabled and not snapshot.autonomy_model:
@@ -682,6 +827,17 @@ def validate_startup_config(
     ):
         warnings.append(
             "NANA_LLMGATE_MAIN_REASONING_EFFORT: unsupported value; provider default will apply"
+        )
+    if not snapshot.private_llm_provider_raw_valid:
+        warnings.append(
+            "NANA_PRIVATE_LLM_PROVIDER: unsupported value; private chat stays on llmgate"
+        )
+    if (
+        snapshot.private_llm_provider == "openai_direct"
+        and not snapshot.private_llm_reasoning_effort_raw_valid
+    ):
+        warnings.append(
+            "NANA_OPENAI_DIRECT_REASONING_EFFORT: unsupported value; using none"
         )
     if snapshot.llm_fast_private_enabled:
         if snapshot.provider != "llmgate":
@@ -916,6 +1072,15 @@ def build_startup_config_contract(
     )
 
 
+def _private_llm_label(snapshot: StartupConfigSnapshot) -> str:
+    if snapshot.private_llm_provider != "openai_direct":
+        return f"llmgate:{snapshot.private_llm_model or snapshot.main_model or 'none'}"
+    return (
+        f"openai_direct:{snapshot.private_llm_model}/effort={snapshot.private_llm_reasoning_effort}"
+        f",fallback=llmgate:{snapshot.main_model or 'none'}"
+    )
+
+
 def format_startup_config_line(contract: StartupConfigContract) -> str:
     snapshot = contract.snapshot
     voice_mode = "stream" if snapshot.voice_streaming_enabled else "file"
@@ -925,6 +1090,7 @@ def format_startup_config_line(contract: StartupConfigContract) -> str:
         "Startup config contract: "
         f"status={contract.status} | provider={snapshot.provider} | "
         f"model={snapshot.main_model or 'none'} | "
+        f"private_llm={_private_llm_label(snapshot)} | "
         f"llm_fast={'on' if snapshot.llm_fast_private_enabled else 'off'}:"
         f"{snapshot.llm_fast_private_model or 'none'} | "
         f"autonomy={'on' if snapshot.autonomy_enabled else 'off'}:{snapshot.autonomy_model} | "
@@ -946,6 +1112,12 @@ def format_startup_config_line(contract: StartupConfigContract) -> str:
         f"avatar={'on' if snapshot.avatar_gateway_enabled else 'off'}:"
         f"{snapshot.avatar_gateway_host}:{snapshot.avatar_gateway_port}/"
         f"{snapshot.avatar_gateway_transport} | "
+        f"private_web={'on' if snapshot.private_web_chat_enabled else 'off'}:"
+        f"{snapshot.private_web_chat_host}:{snapshot.private_web_chat_port} | "
+        f"context=private:{snapshot.context_private_mode}/"
+        f"public:{snapshot.context_public_gpt_mode}/"
+        f"cum2:{snapshot.context_cum2_mode}/"
+        f"autonomy:{snapshot.context_autonomy_mode} | "
         f"warnings={len(contract.warnings)} | errors={len(contract.errors)}"
     )
 

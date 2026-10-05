@@ -61,6 +61,7 @@ def _install_isolated_dependencies():
         "LLMGATE_CHEAP_MODEL": "fake", "LLMGATE_FALLBACK_MODELS": [],
         "LLMGATE_MAIN_MODEL": "fake", "LLMGATE_PUBLIC_FALLBACK_MODELS": [],
         "LLMGATE_PUBLIC_MODEL": "fake-public", "NANA_CHAT_PROVIDER": "llmgate",
+        "ELEVEN_PUBLIC_TTS_MODEL": "eleven_v3",
         "NANA_OPENAI_FALLBACK_ENABLED": False, "NANA_PERSONALITY": "PUBLIC CORE",
         "NANA_SHARED_HISTORY": PRIVATE, "OPENAI_API_KEY": "fake",
         "OPENAI_FALLBACK_MODELS": [], "OPENAI_MODEL": "fake",
@@ -122,10 +123,33 @@ def _install_isolated_dependencies():
     captured = {"sync": [], "stream": []}
     llmgate = _module("nana.brain.llmgate_client")
     llmgate.call_llmgate_messages = lambda *_a, **_k: ("normal public response", {})
+
+    def call_llmgate_compiled(compiled, **_kwargs):
+        captured["sync"].append(
+            [
+                {"role": message.role, "content": message.content}
+                for message in compiled.messages
+            ]
+        )
+        return "normal public response", "ok", types.SimpleNamespace(status="complete")
+
+    llmgate.call_llmgate_compiled = call_llmgate_compiled
+
     def stream_llmgate_messages(**kwargs):
         captured["stream"].append(kwargs["messages"])
         yield "stream public response"
     llmgate.stream_llmgate_messages = stream_llmgate_messages
+
+    def stream_llmgate_compiled(compiled, **_kwargs):
+        captured["stream"].append(
+            [
+                {"role": message.role, "content": message.content}
+                for message in compiled.messages
+            ]
+        )
+        yield "stream public response"
+
+    llmgate.stream_llmgate_compiled = stream_llmgate_compiled
     _module("nana.runtime.social_session",
             get_social_session=lambda: types.SimpleNamespace(
                 _topic_stack=[], format_public_room_context=lambda *a, **k: ""))

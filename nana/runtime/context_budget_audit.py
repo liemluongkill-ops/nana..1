@@ -7,11 +7,14 @@ call the model and does not change prompt assembly.
 from __future__ import annotations
 
 import math
+from threading import Lock
 from dataclasses import dataclass, field
 from typing import Any
 
 
 PHASE = "STAGE-9F"
+_COMPILED_REPORTS = {}
+_COMPILED_REPORT_LOCK = Lock()
 
 
 @dataclass(frozen=True)
@@ -40,13 +43,20 @@ class ContextBudgetReport:
     warning_threshold_tokens: int = 6000
     read_only: bool = True
     can_act: bool = False
+    manifest_total_chars: int | None = None
+    manifest_total_tokens: int | None = None
+    measurement: str = "legacy_estimate"
 
     @property
     def total_chars(self) -> int:
+        if self.manifest_total_chars is not None:
+            return self.manifest_total_chars
         return sum(section.chars for section in self.sections if section.injected)
 
     @property
     def total_tokens_est(self) -> int:
+        if self.manifest_total_tokens is not None:
+            return self.manifest_total_tokens
         return sum(section.tokens_est for section in self.sections if section.injected)
 
     @property
@@ -54,7 +64,7 @@ class ContextBudgetReport:
         return int(self.total_tokens_est >= self.warning_threshold_tokens)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "phase": PHASE,
             "total_chars": self.total_chars,
             "total_tokens_est": self.total_tokens_est,
@@ -64,6 +74,9 @@ class ContextBudgetReport:
             "can_act": self.can_act,
             "sections": [section.to_dict() for section in self.sections],
         }
+        if self.measurement != 'legacy_estimate':
+            result['measurement'] = self.measurement
+        return result
 
 
 def _estimate_tokens(text: str) -> int:
@@ -82,7 +95,37 @@ def _section(name: str, text: str, source: str, injected: bool = True, note: str
     )
 
 
-def build_context_budget_audit(lane: str = "public_stage") -> ContextBudgetReport:
+def record_compiled_budget(compiled):
+    """Retain a bounded metadata report only, never messages or evidence."""
+    report = build_context_budget_audit(compiled.lane.value, compiled=compiled)
+    with _COMPILED_REPORT_LOCK:
+        _COMPILED_REPORTS[compiled.lane.value] = report
+
+
+def build_context_budget_audit(lane: str = "public_stage", *, compiled=None) -> ContextBudgetReport:
+    if compiled is not None:
+        from nana.runtime.context_telemetry import build_candidate_context_telemetry
+        manifest = build_candidate_context_telemetry(compiled).manifest
+        if manifest.lane.value != lane:
+            from nana.runtime.context_contracts import ContextContractError
+            raise ContextContractError('audit_lane_mismatch')
+        return ContextBudgetReport(
+            sections=tuple(BudgetSection(row.section_id, row.chars, row.token_estimate,
+                                        row.source.owner, row.included, row.decision)
+                           for row in manifest.sections),
+            manifest_total_chars=manifest.input_chars,
+            manifest_total_tokens=manifest.input_tokens_est,
+            measurement='compiled_manifest',
+        )
+    if lane == 'private_owner':
+        from nana import config
+        if getattr(config, 'NANA_CONTEXT_PRIVATE_MODE', 'legacy') == 'canonical':
+            with _COMPILED_REPORT_LOCK:
+                report = _COMPILED_REPORTS.get(lane)
+            if report is None:
+                from nana.runtime.context_contracts import ContextContractError
+                raise ContextContractError('canonical_manifest_unavailable')
+            return report
     sections: list[BudgetSection] = []
 
     try:
@@ -179,7 +222,7 @@ def context_budget_status_lines(lane: str = "public_stage") -> list[str]:
     report = build_context_budget_audit(lane)
     return [
         "📏 Context Budget Audit (STAGE-9F)",
-        f"  Mode: estimate-only | lane={lane} | read_only={report.read_only} | can_act={report.can_act}",
+        f"  Mode: {'compiled-manifest' if report.measurement == 'compiled_manifest' else 'estimate-only'} | lane={lane} | read_only={report.read_only} | can_act={report.can_act}",
         f"  Total injected estimate: chars={report.total_chars} | tokens≈{report.total_tokens_est} | threshold={report.warning_threshold_tokens}",
         f"  Sections: {len(report.sections)} | warnings={report.warnings}",
         "  Commands: /context-budget-status [lane] | /context-budget-audit [lane]",

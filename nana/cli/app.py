@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 import os
 import threading
 import time
+from uuid import uuid4
 
 from nana.autonomy import AUTONOMY_EXPRESS, AUTONOMY_LOOP
 from nana.runtime.context import context_lock, context_state
@@ -64,6 +65,27 @@ def _stop_avatar_gateway(gateway=None):
         owner.stop()
 
 
+def _get_nana_web_launcher():
+    from nana.runtime.nana_web_launcher import get_nana_web_launcher
+
+    return get_nana_web_launcher()
+
+
+def _start_nana_web_launcher(launcher=None):
+    from nana.runtime.nana_web_launcher import format_nana_web_result
+
+    owner = launcher if launcher is not None else _get_nana_web_launcher()
+    result = owner.ensure_open()
+    print(format_nana_web_result(result))
+    return owner
+
+
+def _stop_nana_web_launcher(launcher=None):
+    owner = launcher if launcher is not None else _get_nana_web_launcher()
+    if owner is not None:
+        owner.close()
+
+
 def _nonnegative_env_float(name, default):
     try:
         return max(0.0, float(os.getenv(name, str(default))))
@@ -91,6 +113,7 @@ class _RuntimeHandles:
     vts_mouth_task: asyncio.Task | None = None
     bridge_task: asyncio.Task | None = None
     avatar_gateway: object | None = None
+    nana_web_launcher: object | None = None
     presence_session_task: asyncio.Task | None = None
     presence_session_server: object | None = None
     poller_threads: set[threading.Thread] = field(default_factory=set)
@@ -98,6 +121,13 @@ class _RuntimeHandles:
     poller_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     shutdown_lock: asyncio.Lock | None = field(default=None, repr=False)
     shutdown_complete: bool = False
+    startup_config: object | None = None
+    private_web_chat: object | None = None
+    private_voice_receipts: object | None = None
+
+
+from nana.runtime.private_web_chat_runtime import _build_private_web_chat_runtime
+
 
 
 # ------------------------------------------------------------------
@@ -265,6 +295,28 @@ async def _shutdown_runtime(
             )
         except Exception as exc:
             log_event("runtime", f"Avatar gateway stop signal failed: {exc}")
+
+        private_runtime = getattr(runtime_handles, "private_web_chat", None)
+        if private_runtime is not None:
+            try:
+                await private_runtime.stop(
+                    float(
+                        getattr(
+                            getattr(runtime_handles, "startup_config", None),
+                            "private_web_chat_shutdown_drain_seconds",
+                            15.0,
+                        )
+                    )
+                )
+            except Exception as exc:
+                log_event("runtime", f"Private web chat shutdown failed: {exc}")
+
+        nana_web_launcher = getattr(runtime_handles, "nana_web_launcher", None)
+        if nana_web_launcher is not None:
+            try:
+                _stop_nana_web_launcher(nana_web_launcher)
+            except Exception as exc:
+                log_event("runtime", f"Nana Web shutdown failed: {exc}")
 
         presence_session_server = runtime_handles.presence_session_server
         if voice is not None:
@@ -455,6 +507,7 @@ async def main():
     LAST_VISION_DESCRIPTION = None
 
     runtime_handles = _RuntimeHandles()
+    runtime_handles.startup_config = startup_config
     voice = None
     vts = None
 
@@ -521,9 +574,59 @@ async def main():
                     return face
             return "happy"
 
-        async def dispatch_text(dispatch_voice, text):
-            async with turn_lock:
+        async def dispatch_text_unlocked(dispatch_voice, text, *, observer=None):
+            if observer is None:
                 return await handle_text(vts, dispatch_voice, text, loop)
+            return await handle_text(vts, dispatch_voice, text, loop, observer=observer)
+
+        async def dispatch_text(dispatch_voice, text, *, observer=None):
+            async with turn_lock:
+                return await dispatch_text_unlocked(
+                    dispatch_voice,
+                    text,
+                    observer=observer,
+                )
+
+        try:
+            runtime_handles.nana_web_launcher = _get_nana_web_launcher()
+            from nana.runtime.nana_web_ownership import NanaWebOwnershipVerifier
+
+            launcher = runtime_handles.nana_web_launcher
+            lease_provider = launcher.ownership_lease
+            verifier = NanaWebOwnershipVerifier(
+                current_core_boot_id=lambda: launcher.core_boot_id,
+                active_lease_provider=lease_provider,
+            )
+            async def private_dispatch(text, observer):
+                return await dispatch_text_unlocked(
+                    voice,
+                    text,
+                    observer=observer,
+                )
+
+            runtime_handles.private_web_chat = _build_private_web_chat_runtime(
+                enabled=bool(startup_config.private_web_chat_enabled),
+                voice=voice,
+                turn_lock=turn_lock,
+                dispatch_turn_unlocked=private_dispatch,
+                launcher=launcher,
+                ownership_verifier=verifier,
+                server_epoch=launcher.core_boot_id,
+                host=startup_config.private_web_chat_host,
+                port=startup_config.private_web_chat_port,
+                lock_wait_seconds=startup_config.private_web_chat_lock_wait_seconds,
+                turn_timeout_seconds=startup_config.private_web_chat_turn_timeout_seconds,
+                shutdown_drain_seconds=startup_config.private_web_chat_shutdown_drain_seconds,
+                loop=loop,
+            )
+            if runtime_handles.private_web_chat is not None:
+                await runtime_handles.private_web_chat.start()
+        except Exception as exc:
+            print(f"Private web chat startup soft-fail: {type(exc).__name__}")
+        try:
+            _start_nana_web_launcher(runtime_handles.nana_web_launcher)
+        except Exception as exc:
+            print(f"Nana Web startup soft-fail: {type(exc).__name__}")
 
         async def handle_presence_capture(capture):
             turn_started = time.perf_counter()

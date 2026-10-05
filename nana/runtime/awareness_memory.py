@@ -30,6 +30,9 @@ Recent Moments = Nana's sense of time passing.
 from __future__ import annotations
 
 import html
+import hashlib
+import json
+import math
 import re
 import threading
 import time
@@ -38,6 +41,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from nana.runtime.live_awareness import build_live_awareness_snapshot
+from nana.runtime.context_contracts import Freshness, SourceSnapshot
 
 
 # ─── Constants ────────────────────────────────────────────────────────────────
@@ -232,6 +236,82 @@ class AwarenessMemory:
             if len(result) >= limit:
                 break
 
+        return result
+
+    def capture_source_snapshot(self, *, captured_at: float) -> SourceSnapshot:
+        """Recursively freeze the bounded temporal source under its owner lock."""
+
+        with self._lock:
+            records = []
+            for moment in reversed(self._moments):
+                records.append(
+                    {
+                        "id": moment.id,
+                        "timestamp": moment.timestamp,
+                        "monotonic": moment.monotonic,
+                        "source": moment.source,
+                        "active_app": moment.active_app,
+                        "active_zone": moment.active_zone,
+                        "browser_kind": moment.browser_kind,
+                        "title": moment.title,
+                        "url_host": moment.url_host,
+                        "focus_source": moment.focus_source,
+                        "focus_text": moment.focus_text,
+                        "user_text": moment.user_text,
+                        "nana_text": moment.nana_text,
+                        "confidence": moment.confidence,
+                        "importance": moment.importance,
+                        "ttl_seconds": moment.ttl_seconds,
+                        "can_act": False,
+                        "frozen_awareness": moment.frozen_awareness,
+                        "frozen_url": moment.frozen_url,
+                        "frozen_title": moment.frozen_title,
+                        "turn_counter": moment.turn_counter,
+                    }
+                )
+            payload = {"enabled": self._enabled, "moments": records}
+            semantic = {
+                "enabled": self._enabled,
+                "moments": [_semantic_moment_record(record) for record in records],
+            }
+            encoded = json.dumps(
+                semantic,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            ).encode("utf-8")
+            revision = "sha256-" + hashlib.sha256(encoded).hexdigest()
+
+            valid_times = [
+                float(record["timestamp"])
+                for record in records
+                if type(record["timestamp"]) in (int, float)
+                and math.isfinite(float(record["timestamp"]))
+                and 0.0 <= float(record["timestamp"]) <= captured_at + 2.0
+            ]
+            observed_at = min(max(valid_times), captured_at) if valid_times else None
+            if observed_at is None:
+                freshness = Freshness.UNKNOWN
+            elif any(
+                float(record["timestamp"]) + float(record["ttl_seconds"]) > captured_at
+                for record in records
+                if type(record["timestamp"]) in (int, float)
+                and type(record["ttl_seconds"]) in (int, float)
+                and math.isfinite(float(record["timestamp"]))
+                and math.isfinite(float(record["ttl_seconds"]))
+            ):
+                freshness = Freshness.FRESH
+            else:
+                freshness = Freshness.EXPIRED
+            result = SourceSnapshot(
+                source="awareness_memory",
+                revision=revision,
+                observed_at=observed_at,
+                captured_at=captured_at,
+                freshness=freshness,
+                payload=payload,
+            )
         return result
 
     def clear(self) -> int:
@@ -537,13 +617,7 @@ class AwarenessMemory:
         parts = []
         for m in moments[:max_moments]:
             age_str = _age_string(m.age_seconds(now))
-            # V2: Prefer frozen focus_text/title from recording time over live data
-            focus = m.focus_text or m.title
-            # If we have frozen awareness, prefer that over current fields
-            if m.frozen_awareness:
-                frozen_focus = m.frozen_awareness.get("focus_text") or m.frozen_awareness.get("browser_title") or ""
-                if frozen_focus:
-                    focus = _cap(frozen_focus, CAP_FOCUS_TEXT)
+            focus = _project_moment_focus(m)
             if m.source == SRC_AWARENESS:
                 parts.append(f"[aw] {age_str} {m.browser_kind or m.active_zone}: {focus}")
             elif m.source == SRC_CHAT:
@@ -582,20 +656,7 @@ class AwarenessMemory:
             age_str = _age_string(age)
             source_tag = f"[{m.source}]"
 
-            # V2: Prefer frozen focus from recording time
-            # Use frozen_awareness data when available, falling back to current fields
-            focus = m.focus_text or m.title
-            if m.frozen_awareness:
-                frozen_focus = m.frozen_awareness.get("focus_text") or ""
-                frozen_title = m.frozen_awareness.get("browser_title") or ""
-                frozen_kind = m.frozen_awareness.get("browser_kind") or m.browser_kind
-                frozen_url = m.frozen_awareness.get("browser_url") or ""
-                frozen_conf = m.frozen_awareness.get("focus_confidence", m.confidence)
-                if frozen_focus:
-                    focus = _cap(frozen_focus, CAP_FOCUS_TEXT)
-                # Use frozen title if current is empty
-                if not focus and frozen_title:
-                    focus = _cap(frozen_title, CAP_TITLE)
+            focus = _project_moment_focus(m)
 
             if m.source == SRC_CHAT:
                 lines.append(
@@ -688,6 +749,12 @@ def get_awareness_memory() -> AwarenessMemory:
     return _awareness_memory
 
 
+def capture_awareness_memory_source(*, captured_at: float) -> SourceSnapshot:
+    """Capture the singleton through its side-effect-free owner API."""
+
+    return get_awareness_memory().capture_source_snapshot(captured_at=captured_at)
+
+
 # ─── Helper functions ────────────────────────────────────────────────────────
 
 def _cap(text: str, limit: int) -> str:
@@ -705,6 +772,91 @@ def _cap(text: str, limit: int) -> str:
         return text[:last_space].rstrip(" ,;:.") + "..."
     # No space found — cut at limit-3 to leave room for "..."
     return text[: limit - 3] + "..."
+
+
+def _project_moment_focus(moment) -> str:
+    """Apply the awareness owner's focus/title precedence and source caps."""
+
+    frozen = getattr(moment, "frozen_awareness", None) or {}
+    frozen_focus = frozen.get("focus_text") if hasattr(frozen, "get") else ""
+    frozen_title = frozen.get("browser_title") if hasattr(frozen, "get") else ""
+    if frozen_focus:
+        return _cap(str(frozen_focus), CAP_FOCUS_TEXT)
+    focus = _cap(str(getattr(moment, "focus_text", "") or ""), CAP_FOCUS_TEXT)
+    if focus:
+        return focus
+    title = _cap(str(getattr(moment, "title", "") or ""), CAP_TITLE)
+    if title:
+        return title
+    return _cap(str(frozen_title or ""), CAP_TITLE)
+
+
+_SEMANTIC_FROZEN_AWARENESS_FIELDS = (
+    "active_app",
+    "active_title",
+    "active_zone",
+    "idle_state",
+    "in_flow",
+    "browser_available",
+    "browser_fresh",
+    "browser_effective",
+    "browser_stale_reason",
+    "browser",
+    "browser_kind",
+    "browser_title",
+    "browser_url",
+    "browser_heading",
+    "browser_meta_description",
+    "browser_selected_text",
+    "browser_social_post_text",
+    "browser_social_vibe",
+    "browser_local_summary",
+    "focus_source",
+    "focus_text",
+    "focus_confidence",
+    "is_confirmed_active",
+    "is_sticky_locked",
+    "awareness_mode",
+    "can_act",
+)
+
+
+def _semantic_moment_record(record: dict) -> dict:
+    semantic = {
+        key: record.get(key)
+        for key in (
+            "id",
+            "timestamp",
+            "monotonic",
+            "source",
+            "active_app",
+            "active_zone",
+            "browser_kind",
+            "title",
+            "url_host",
+            "focus_source",
+            "focus_text",
+            "user_text",
+            "nana_text",
+            "confidence",
+            "importance",
+            "ttl_seconds",
+            "can_act",
+            "frozen_url",
+            "frozen_title",
+            "turn_counter",
+        )
+    }
+    frozen = record.get("frozen_awareness")
+    if hasattr(frozen, "get"):
+        semantic["frozen_awareness"] = {
+            key: frozen.get(key)
+            for key in _SEMANTIC_FROZEN_AWARENESS_FIELDS
+            if frozen.get(key) is not None
+        }
+    else:
+        semantic["frozen_awareness"] = None
+    return semantic
 
 
 def _is_sensitive(text: str) -> bool:
@@ -806,6 +958,7 @@ def build_synthetic_moment(
 __all__ = [
     "AwarenessMemory",
     "Moment",
+    "capture_awareness_memory_source",
     "get_awareness_memory",
     "build_synthetic_moment",
     "CAP_TITLE",

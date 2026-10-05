@@ -223,6 +223,16 @@ class RetrievalCandidate:
     consent: bool = False
     created_at: float = 0.0
     expires_at: float | None = None
+    memory_type: str = ""
+    semantic_role: str = ""
+    observed_at: float | None = None
+    subject: str | None = None
+    subject_role: str | None = None
+    conflict_key: str | None = None
+    canonical_value: str | None = None
+    authority: str | None = None
+    semantic_status: str | None = None
+    temporal_selected: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         value = {
@@ -243,6 +253,21 @@ class RetrievalCandidate:
         }
         if self.expires_at is not None:
             value["expires_at"] = self.expires_at
+        for name in (
+            "memory_type",
+            "semantic_role",
+            "observed_at",
+            "subject",
+            "subject_role",
+            "conflict_key",
+            "canonical_value",
+            "authority",
+            "semantic_status",
+            "temporal_selected",
+        ):
+            item = getattr(self, name)
+            if item not in (None, "", False):
+                value[name] = item
         return value
 
 
@@ -302,6 +327,7 @@ def retrieve_memory_candidates(
     semantic_adapter: SemanticAdapter | None = None,
     timeout_ms: int = DEFAULT_TIMEOUT_MS,
     now: float | None = None,
+    canonical_strict: bool = False,
 ) -> RetrievalResult:
     """Retrieve bounded candidates without mutating or persisting memory.
 
@@ -320,6 +346,8 @@ def retrieve_memory_candidates(
     # function total while preserving the requested budget exactly.
     bounded_chars = _bound_int(max_chars, DEFAULT_MAX_CHARS, 1, MAX_MAX_CHARS)
     bounded_timeout = _bound_int(timeout_ms, DEFAULT_TIMEOUT_MS, 1, MAX_TIMEOUT_MS)
+    if type(canonical_strict) is not bool:
+        raise TypeError("canonical_strict must be bool")
     current_time = time.time() if now is None else float(now)
 
     if not canonical_scope.lane or canonical_scope.lane not in ALL_LANES:
@@ -357,11 +385,46 @@ def retrieve_memory_candidates(
         if normalized is None:
             _reject(rejected, "record_shape")
             continue
-        reason = _record_rejection_reason(normalized, canonical_scope, current_time)
+        reason = _record_rejection_reason(
+            normalized,
+            canonical_scope,
+            current_time,
+            canonical_strict=canonical_strict,
+        )
         if reason:
             _reject(rejected, reason)
             continue
         eligible.append(normalized)
+
+    if canonical_strict:
+        identity_positions: dict[tuple[str, str], list[int]] = {}
+        for index, record in enumerate(eligible):
+            identity_positions.setdefault(("record", str(record["id"])), []).append(index)
+            identity_positions.setdefault(("event", str(record["source_event_id"])), []).append(index)
+        duplicate_indices: set[int] = set()
+        conflicting_indices: set[int] = set()
+        for positions in identity_positions.values():
+            positions = list(dict.fromkeys(positions))
+            if len(positions) < 2:
+                continue
+            first = eligible[positions[0]]
+            if all(eligible[position] == first for position in positions[1:]):
+                duplicate_indices.update(positions[1:])
+            else:
+                conflicting_indices.update(positions)
+        duplicate_indices.difference_update(conflicting_indices)
+        if duplicate_indices:
+            rejected["duplicate"] = rejected.get("duplicate", 0) + len(duplicate_indices)
+        if conflicting_indices:
+            rejected["conflicting_duplicate"] = (
+                rejected.get("conflicting_duplicate", 0) + len(conflicting_indices)
+            )
+        if duplicate_indices or conflicting_indices:
+            excluded_indices = duplicate_indices | conflicting_indices
+            eligible = [
+                record for index, record in enumerate(eligible)
+                if index not in excluded_indices
+            ]
 
     lexical = _lexical_scores(query_text, eligible)
     semantic_used = False
@@ -451,7 +514,13 @@ def retrieve_memory_candidates(
         fallback_used = True
         semantic_error = "no_eligible_candidates"
 
-    candidates = _rank_and_bound(eligible, lexical, bounded_limit, bounded_chars)
+    candidates = _rank_and_bound(
+        eligible,
+        lexical,
+        bounded_limit,
+        bounded_chars,
+        complete_records=canonical_strict,
+    )
     status = "ok" if candidates else ("fallback" if fallback_used else "empty")
     return RetrievalResult(
         status=status,
@@ -699,6 +768,33 @@ def _normalize_record(raw: Any) -> dict[str, Any] | None:
         expires_at = None
     tags = value.get("tags") if isinstance(value.get("tags"), (list, tuple, set)) else []
     tags_clean = tuple(_clean(tag, 80) for tag in tags if _clean(tag, 80))
+    conflict = value.get("conflict") if isinstance(value.get("conflict"), Mapping) else {}
+    observed_raw = value.get("observed_at", value.get("updated_at", created_at))
+    try:
+        observed_at = float(observed_raw) if observed_raw is not None else None
+    except (TypeError, ValueError):
+        observed_at = None
+
+    truth_metadata_invalid = False
+
+    def optional_truth_text(*names: str, limit: int = 200) -> str | None:
+        nonlocal truth_metadata_invalid
+        for name in names:
+            raw_value = value[name] if name in value else conflict.get(name)
+            if raw_value is None:
+                continue
+            if type(raw_value) is not str:
+                truth_metadata_invalid = True
+                return None
+            cleaned = raw_value.strip()
+            if not cleaned:
+                continue
+            if len(cleaned) > limit:
+                truth_metadata_invalid = True
+                return None
+            return cleaned
+        return None
+
     return {
         "id": item_id,
         "type": _clean(value.get("type") or "project_fact", 80).lower(),
@@ -718,16 +814,51 @@ def _normalize_record(raw: Any) -> dict[str, Any] | None:
         "verified": _as_bool(value.get("verified", scope.get("verified", False))),
         "consent": _as_bool(value.get("consent", scope.get("consent", False))),
         "expires_at": expires_at,
+        "memory_type": _clean(value.get("type") or "", 80).lower(),
+        "semantic_role": (optional_truth_text("semantic_role", "kind", limit=40) or "").lower(),
+        "observed_at": observed_at,
+        "subject": optional_truth_text("subject"),
+        "subject_role": optional_truth_text("subject_role", limit=80),
+        "conflict_key": optional_truth_text("conflict_key"),
+        "canonical_value": optional_truth_text("canonical_value", limit=700),
+        "authority": optional_truth_text("authority", limit=80),
+        "semantic_status": optional_truth_text("semantic_status", "status", limit=80),
+        "temporal_selected": _as_bool(value.get("temporal_selected", conflict.get("temporal_selected", False))),
+        "truth_metadata_invalid": truth_metadata_invalid,
     }
 
 
-def _record_rejection_reason(record: Mapping[str, Any], scope: RetrievalScope, now: float) -> str:
+def _record_rejection_reason(
+    record: Mapping[str, Any],
+    scope: RetrievalScope,
+    now: float,
+    *,
+    canonical_strict: bool = False,
+) -> str:
     record_lane = str(record.get("lane") or "")
     if record_lane not in ALL_LANES:
         return "lane"
     if not str(record.get("source_event_id") or "").strip():
         return "provenance"
+    if canonical_strict and record.get("truth_metadata_invalid"):
+        return "truth_metadata"
     if _contains_secret(record.get("text")) or _contains_secret(record.get("source")):
+        return "secret"
+    if canonical_strict and any(
+        _contains_secret(record.get(name))
+        for name in (
+            "id",
+            "source_event_id",
+            "memory_type",
+            "semantic_role",
+            "subject",
+            "subject_role",
+            "conflict_key",
+            "canonical_value",
+            "authority",
+            "semantic_status",
+        )
+    ):
         return "secret"
     if record.get("type") in {"ephemeral", "session", "temporary", "transient"}:
         return "ephemeral"
@@ -874,6 +1005,8 @@ def _rank_and_bound(
     scores: Mapping[str, tuple[float, str]],
     limit: int,
     max_chars: int,
+    *,
+    complete_records: bool = False,
 ) -> list[RetrievalCandidate]:
     indexed = {str(record["id"]): record for record in records}
     ranked = sorted(
@@ -887,9 +1020,12 @@ def _rank_and_bound(
         remaining = max_chars - used_chars
         if remaining <= 0:
             break
-        text = str(record["text"])[:remaining]
+        full_text = str(record["text"])
+        text = full_text if complete_records else full_text[:remaining]
         if not text:
             break
+        if complete_records and len(text) > remaining:
+            continue
         candidate = RetrievalCandidate(
             id=item_id,
             text=text,
@@ -906,6 +1042,16 @@ def _rank_and_bound(
             consent=bool(record.get("consent")),
             created_at=float(record.get("created_at", 0.0) or 0.0),
             expires_at=record.get("expires_at"),
+            memory_type=str(record.get("memory_type") or ""),
+            semantic_role=str(record.get("semantic_role") or ""),
+            observed_at=record.get("observed_at"),
+            subject=record.get("subject"),
+            subject_role=record.get("subject_role"),
+            conflict_key=record.get("conflict_key"),
+            canonical_value=record.get("canonical_value"),
+            authority=record.get("authority"),
+            semantic_status=record.get("semantic_status"),
+            temporal_selected=bool(record.get("temporal_selected")),
         )
         output.append(candidate)
         used_chars += len(text)

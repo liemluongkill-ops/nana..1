@@ -86,6 +86,14 @@ def handle_status_command(loop, voice, text: str, text_lower: str | None = None)
         _status_fn("print_llm_route_status")()
         return True
 
+    if text_lower == "/llm-provider" or text_lower.startswith("/llm-provider "):
+        from nana.brain.openai_direct_client import private_route_command_lines
+        from nana.config import LLMGATE_MAIN_MODEL
+
+        for line in private_route_command_lines(text, LLMGATE_MAIN_MODEL):
+            print(line)
+        return True
+
     if text_lower == "/llm-route-probe" or text_lower == "/model-route-probe":
         _status_fn("print_llm_route_probe")("")
         return True

@@ -89,6 +89,7 @@ def _test_external_bridge_short_quiet_room_uses_9s_before_repeat():
                 "source": "discord",
                 "event_type": "message",
                 "text": "phòng nay im quá",
+                "channel_id": 2,
                 "author_name": "linhcute2746",
                 "metadata": {
                     "message_id": f"9s-quiet-{idx}",

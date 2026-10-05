@@ -1,0 +1,10 @@
+{
+  "fixture_version": 1,
+  "lane": "private_owner",
+  "route": "autonomy",
+  "model": "fixture-model",
+  "current_input": "CONTEXT-FIXTURE-AUTONOMY-PRIVATE-001",
+  "required_markers": ["Nana", "CONTEXT-FIXTURE-AUTONOMY-PRIVATE-001", "CONTEXT-FIXTURE-AUTONOMY-WEB-001"],
+  "forbidden_markers": ["PRIVATE-LEAK-SENTINEL", "CONTEXT-FIXTURE-PRIVATE-RETRIEVAL-001", "CONTEXT-FIXTURE-PRIVATE-CHECKPOINT-001"],
+  "wire_roles": ["system", "user"]
+}

@@ -24,8 +24,6 @@ import random
 import time
 from typing import Callable, Optional
 
-from nana.runtime.attention import evaluate_attention_window
-from nana.runtime.context import context_snapshot
 from nana.autonomy.expression_gate import GateContext
 
 
@@ -41,9 +39,18 @@ class RealObserver:
     itself holds no locks.
     """
 
-    def __init__(self, clock=None, rng=None):
+    def __init__(
+        self,
+        clock=None,
+        rng=None,
+        *,
+        audience_authority=None,
+        wall_clock=None,
+    ):
         self._clock = clock or time.monotonic
+        self._wall_clock = wall_clock or time.time
         self._rng = rng or random.Random()
+        self._audience_authority = audience_authority
         # Passed in by main.py so the observer can ask "is something
         # in the middle of a command right now?"
         self._command_in_flight_fn: Optional[Callable[[], bool]] = None
@@ -59,9 +66,24 @@ class RealObserver:
 
     def get_context(self) -> dict:
         """Return a GateContext-compatible dict with real signal values."""
+        try:
+            from nana.runtime.context_autonomy import resolve_autonomy_audience
+
+            audience = resolve_autonomy_audience(self._audience_authority)
+        except Exception:
+            return self._unresolved_context()
+
         now = self._clock()
+        wall_now = self._wall_clock()
+
+        from nana.runtime.context_contracts import Lane
+
+        if audience.lane is Lane.PUBLIC_STAGE:
+            return self._public_context(audience, now=now, wall_now=wall_now)
 
         # Read runtime snapshot (thread-safe copy).
+        from nana.runtime.context import context_snapshot
+
         ctx = context_snapshot()
 
         # --- user_is_typing: active keystrokes in last 1.5s --------
@@ -125,7 +147,12 @@ class RealObserver:
         except Exception:
             attention_window = ""
 
-        return {
+        from nana.runtime.context_autonomy import (
+            audience_fields,
+            freeze_autonomy_snapshot,
+        )
+
+        result = {
             "user_is_typing": user_is_typing,
             "game_active": game_active,
             "command_in_flight": command_in_flight,
@@ -138,7 +165,20 @@ class RealObserver:
             "jitter_value": jitter_value,
             "web_context": web_context,
             "attention_window": attention_window,
+            "active_zone": zone,
+            "active_app": ctx.get("active_app") or "",
+            "time": ctx.get("time") or {},
+            "audience": audience_fields(audience),
+            "audience_resolved": True,
+            "stream_stage_policy_gate": False,
         }
+        result["_autonomy_snapshot"] = freeze_autonomy_snapshot(
+            audience=audience,
+            payload=result,
+            captured_wall_time=wall_now,
+            captured_monotonic_time=now,
+        )
+        return result
 
     def make_gate_context(self) -> GateContext:
         """Convenience: return a typed GateContext directly."""
@@ -157,6 +197,66 @@ class RealObserver:
         )
 
     # ---- internal helpers ------------------------------------------
+
+    @staticmethod
+    def _unresolved_context() -> dict:
+        return {
+            "audience_resolved": False,
+            "user_is_typing": False,
+            "game_active": False,
+            "command_in_flight": False,
+            "audio_busy": False,
+            "mood_affection": 0.5,
+            "scene_relevance": 0.0,
+            "silence_duration_s": 0.0,
+            "silence_window_s": _SILENCE_WINDOW_S,
+            "forced_mode": None,
+            "jitter_value": 0.0,
+            "web_context": {},
+            "attention_window": "",
+        }
+
+    def _public_context(self, audience, *, now: float, wall_now: float) -> dict:
+        from nana.runtime.context_autonomy import (
+            audience_fields,
+            freeze_autonomy_snapshot,
+        )
+        from nana.runtime.livestream_identity import is_livestream_source
+
+        state = audience.caller_state
+        scope = audience.public_scope
+
+        def number(name: str, default: float) -> float:
+            value = state.get(name)
+            return default if value is None else float(value)
+
+        result = {
+            "user_is_typing": bool(state.get("user_is_typing", False)),
+            "game_active": bool(state.get("game_active", False)),
+            "command_in_flight": bool(state.get("command_in_flight", False)),
+            "audio_busy": bool(state.get("audio_busy", False)),
+            "mood_affection": 0.5,
+            "scene_relevance": number("scene_relevance", 0.5),
+            "silence_duration_s": number("silence_duration_s", 0.0),
+            "silence_window_s": number("silence_window_s", _SILENCE_WINDOW_S),
+            "forced_mode": state.get("forced_mode"),
+            "jitter_value": number("jitter_value", 0.5),
+            "web_context": state.get("web_context") or {},
+            "attention_window": str(state.get("attention_window") or ""),
+            "active_zone": str(state.get("active_zone") or "public"),
+            "active_app": str(state.get("active_app") or ""),
+            "time": state.get("time") or {},
+            "audience": audience_fields(audience),
+            "audience_resolved": True,
+            "stream_stage_policy_gate": is_livestream_source(scope.platform),
+        }
+        result["_autonomy_snapshot"] = freeze_autonomy_snapshot(
+            audience=audience,
+            payload=result,
+            captured_wall_time=wall_now,
+            captured_monotonic_time=now,
+        )
+        return result
 
     def _is_typing(self, now: float) -> bool:
         """Return True if the user has pressed a key in the last 3.0s."""
@@ -198,6 +298,8 @@ class RealObserver:
         Scores are biased upward so the gate still fires (intensity >= 0.4)
         in most realistic scenarios.
         """
+        from nana.runtime.attention import evaluate_attention_window
+
         attention = evaluate_attention_window({
             "zone": ctx.get("active_zone"),
             "active_app": ctx.get("active_app"),

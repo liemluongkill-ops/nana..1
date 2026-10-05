@@ -104,6 +104,33 @@ def _model_readiness(model_name: str) -> str:
     return "ready"
 
 
+def _private_route(llmgate_model: str) -> dict:
+    try:
+        from nana.brain.openai_direct_client import private_route_snapshot
+
+        return private_route_snapshot(llmgate_model)
+    except Exception:
+        return {
+            "provider": "llmgate",
+            "model": llmgate_model,
+            "reasoning_effort": None,
+            "endpoint_host": "llmgate",
+            "key_present": None,
+            "fallback": "none",
+            "transport_model": llmgate_model,
+        }
+
+
+def _private_route_text(route: dict) -> str:
+    if route.get("provider") != "openai_direct":
+        return f"llmgate -> {route.get('model')} (NANA_PRIVATE_LLM_PROVIDER=llmgate)"
+    return (
+        f"openai_direct -> {route.get('model')} | effort={route.get('reasoning_effort')} | "
+        f"endpoint={route.get('endpoint_host')} | key_present={route.get('key_present')} | "
+        f"fallback={route.get('fallback')}"
+    )
+
+
 def llm_route_snapshot() -> dict:
     public = public_model_order()
     core = core_model_order()
@@ -112,9 +139,10 @@ def llm_route_snapshot() -> dict:
     readiness = {model: _model_readiness(model) for model in models}
     core_primary = core[0] if core else "none"
     core_effort = resolve_llmgate_reasoning_effort(core_primary)
+    private_route = _private_route(core_primary)
     transport = llmgate_transport_snapshot()
     core_stream_stats = llmgate_transport_stats(
-        model_name=core_primary,
+        model_name=private_route["transport_model"],
         stream=True,
         limit=20,
     )
@@ -129,6 +157,7 @@ def llm_route_snapshot() -> dict:
         "core_primary": core_primary,
         "core_reasoning_effort": core_effort or "provider_default",
         "core_order": core,
+        "private_route": private_route,
         "cheap_primary": cheap[0] if cheap else "none",
         "cheap_order": cheap,
         "readiness": readiness,
@@ -166,18 +195,28 @@ def llm_route_status_lines() -> list[str]:
     fast_state = private_fast.get("state") or {}
     ready_text = ", ".join(f"{model}={state}" for model, state in readiness.items()) or "none"
     first_text = transport.get("first_text_ms")
+    full_response = transport.get("full_response_ms")
     total = transport.get("total_ms")
     tail = transport.get("tail_after_first_ms")
     first_text_label = "none" if first_text is None else f"{float(first_text):.0f}ms"
+    full_response_label = (
+        "none" if full_response is None else f"{float(full_response):.0f}ms"
+    )
     total_label = "none" if total is None else f"{float(total):.0f}ms"
     tail_label = "none" if tail is None else f"{float(tail):.0f}ms"
     return [
         "LLM Route Status",
         "  Mode: read_only=True | api_call=False | can_act=False",
         f"  Provider: {snap.get('provider')} | openai_fallback={snap.get('openai_fallback')}",
+        f"  Private route: {_private_route_text(snap.get('private_route') or {})}",
         f"  Public chat: primary={snap.get('public_primary')} | order={_route_text(snap.get('public_order') or [])}",
         (
-            f"  Core/private: primary={snap.get('core_primary')} | "
+            (
+                "  Core/private LLMGate fallback: "
+                if (snap.get("private_route") or {}).get("provider") == "openai_direct"
+                else "  Core/private: "
+            )
+            + f"primary={snap.get('core_primary')} | "
             f"reasoning_effort={snap.get('core_reasoning_effort')} | "
             f"order={_route_text(snap.get('core_order') or [])}"
         ),
@@ -195,9 +234,20 @@ def llm_route_status_lines() -> list[str]:
             f"status={transport.get('status')} | pooled={transport.get('pooled')} | "
             f"prompt={transport.get('prompt_chars')}ch | max_tokens={transport.get('max_tokens')} | "
             f"first_text={first_text_label} | "
+            f"full_response={full_response_label} | "
             f"tail_after_first={tail_label} | total={total_label} | "
             f"chunks={transport.get('chunks')} | "
             f"output={transport.get('output_chars')}ch"
+        ),
+        (
+            "  Last observed usage: "
+            f"present={transport.get('provider_usage_present')} | "
+            f"status={transport.get('usage_status')} | "
+            f"input={transport.get('input_tokens')} | "
+            f"cached={transport.get('cached_tokens')} | "
+            f"cache_write={transport.get('cache_write_tokens')} | "
+            f"output={transport.get('output_tokens')} | "
+            f"total={transport.get('total_tokens')}"
         ),
         (
             "  Private fast pilot: "

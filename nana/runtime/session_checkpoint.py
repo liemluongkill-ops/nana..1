@@ -10,6 +10,7 @@ import time
 import unicodedata
 import uuid
 
+from .context_contracts import Freshness, SourceSnapshot
 from .history_privacy import redact_history_text
 
 
@@ -627,6 +628,80 @@ def private_checkpoint_evidence_candidates(
         }
         for score, _, anchor in scored[:limit]
     ]
+
+
+def capture_private_checkpoint_source(
+    memory_store: dict,
+    *,
+    captured_at: float,
+) -> SourceSnapshot:
+    """Return one immutable semantic checkpoint projection without mutation.
+
+    The real turn capture calls this while holding ``memory_lock``. This owner
+    API validates schema and TTL, copies only continuity fields, and never
+    creates, normalizes, compacts, expires, or persists checkpoint state.
+    """
+
+    if not isinstance(memory_store, dict):
+        raise TypeError("memory_store must be a dict")
+    timestamp = _now(captured_at)
+    state = memory_store.get("session_checkpoint")
+    if not _valid_checkpoint(state, now=timestamp):
+        payload = {
+            "available": False,
+            "session_id": "",
+            "summary": "",
+            "anchors": [],
+            "pending_turns": [],
+        }
+        observed_at = None
+        freshness = Freshness.UNKNOWN
+    else:
+        copied = copy.deepcopy(state)
+        summary = copied.get("summary")
+        payload = {
+            "available": True,
+            "session_id": copied["session_id"],
+            "summary": _redact(summary, 1_200) if isinstance(summary, str) else "",
+            "anchors": [
+                {
+                    "event_id": item["event_id"],
+                    "turn_index": item["turn_index"],
+                    "kind": item["kind"],
+                    "text": _redact(item["text"], MAX_USER_CHARS),
+                    "created_at": float(item["created_at"]),
+                }
+                for item in copied["anchors"]
+            ],
+            "pending_turns": [
+                {
+                    "event_id": item["event_id"],
+                    "turn_index": item["turn_index"],
+                    "user_text": _redact(item["user_text"], MAX_USER_CHARS),
+                    "nana_text": _redact(item["nana_text"], MAX_NANA_CHARS),
+                    "created_at": float(item["created_at"]),
+                }
+                for item in copied["pending_turns"]
+            ],
+        }
+        observed_at = min(float(copied["updated_at"]), timestamp)
+        freshness = Freshness.FRESH
+
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return SourceSnapshot(
+        source="private_checkpoint",
+        revision="checkpoint-sha256-" + hashlib.sha256(encoded).hexdigest(),
+        observed_at=observed_at,
+        captured_at=timestamp,
+        freshness=freshness,
+        payload=payload,
+    )
 
 
 def reset_private_checkpoint(memory_store: dict) -> None:

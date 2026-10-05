@@ -382,8 +382,12 @@ def _test_social_style_hint_biases_public_naturalness():
 def _test_social_style_hint_discourages_repeated_answer_motif():
     print("[9H Smoke] Test 15: social style hint discourages repeated answer motif...")
     import time
+    from dataclasses import replace
 
     from nana.runtime.external_bridge import ExternalBridgeRequest
+    from nana.runtime.public_context_boundary import PublicEventScope
+    from nana.runtime.public_delivery_state import PublicDeliveryRecord
+    from nana.runtime.public_identity import CanonicalPublicIdentity
     from nana.runtime.social_session import SocialSessionCache
 
     session = SocialSessionCache(priority_viewers=("linhcute2746",))
@@ -428,8 +432,8 @@ def _test_social_style_hint_discourages_repeated_answer_motif():
     )
     hint = second.style_hint.lower()
     assert "similar recent public question detected" in hint, hint
-    assert "avoid repeating nana's recent wording" in hint, hint
     assert "similar_question_count_this_session=2" in hint, hint
+    assert "avoid repeating nana's recent wording" not in hint, hint
 
     session.record_reply_context(
         request,
@@ -450,7 +454,104 @@ def _test_social_style_hint_discourages_repeated_answer_motif():
     assert "similar_question_count_this_session=3" in third_hint, third_hint
     assert "repeating/testing the same prompt" in third_hint, third_hint
     assert "lightly tease" in third_hint, third_hint
-    assert "motif" in third_hint, third_hint
+    assert "room/đèn/nhịp motif" in third_hint, third_hint
+    assert "avoid repeating nana's recent wording" not in third_hint, third_hint
+
+    identity = CanonicalPublicIdentity("discord", "3", "discord:3")
+
+    def scoped_event(event_id):
+        return PublicEventScope(
+            "discord", "room-2", "stream-9h", event_id, "linhcute2746", identity
+        )
+
+    scoped_clock = [200.0]
+
+    def observe_scoped(scoped_session, scope, at):
+        scoped_clock[0] = at
+        decision = scoped_session.observe(
+            text="phòng nay im quá",
+            event_type="message",
+            priority="priority_public",
+            scope=scope,
+        )
+        scoped_session.record_public_turn(
+            scope=scope,
+            text="phòng nay im quá",
+        )
+        return decision
+
+    scoped_session = SocialSessionCache(
+        priority_viewers=("linhcute2746",),
+        clock=lambda: scoped_clock[0],
+    )
+    first_scope = scoped_event("repeat-scope-1")
+    observe_scoped(scoped_session, first_scope, 200.0)
+    generated = PublicDeliveryRecord(
+        first_scope.event_id,
+        "repeat-output-1",
+        "generated",
+        "repeat-attempt-1",
+        0,
+        "GENERATED ONLY MUST NOT APPEAR",
+        first_scope,
+        200.0,
+    )
+    scoped_session.record_reply_context(scope=first_scope, delivery_record=generated)
+
+    second_scope = scoped_event("repeat-scope-2")
+    scoped_second = observe_scoped(scoped_session, second_scope, 210.0)
+    scoped_second_hint = scoped_second.style_hint.lower()
+    assert "similar_question_count_this_session=2" in scoped_second_hint, scoped_second_hint
+    assert "avoid repeating nana's recent wording" not in scoped_second_hint, scoped_second_hint
+    published = PublicDeliveryRecord(
+        second_scope.event_id,
+        "repeat-output-2",
+        "generated",
+        "repeat-attempt-2",
+        0,
+        "DELIVERED ATTESTED REPLY",
+        second_scope,
+        210.0,
+    )
+    scoped_session.record_reply_context(scope=second_scope, delivery_record=published)
+    published = replace(published, state="published", revision=1, updated_at=211.0)
+    scoped_clock[0] = 211.0
+    scoped_session.record_reply_context(scope=second_scope, delivery_record=published)
+
+    third_scope = scoped_event("repeat-scope-3")
+    scoped_third = observe_scoped(scoped_session, third_scope, 220.0)
+    scoped_third_hint = scoped_third.style_hint.lower()
+    assert "similar_question_count_this_session=3" in scoped_third_hint, scoped_third_hint
+    assert "avoid repeating nana's recent wording" not in scoped_third_hint, scoped_third_hint
+    newer_generated = PublicDeliveryRecord(
+        third_scope.event_id,
+        "repeat-output-3",
+        "generated",
+        "repeat-attempt-3",
+        0,
+        "NEWER GENERATED ONLY MUST NOT APPEAR",
+        third_scope,
+        220.0,
+    )
+    scoped_session.record_reply_context(scope=third_scope, delivery_record=newer_generated)
+
+    published = replace(published, state="playback_started", revision=2, updated_at=221.0)
+    scoped_clock[0] = 221.0
+    scoped_session.record_reply_context(scope=second_scope, delivery_record=published)
+    delivered = replace(published, state="delivered", revision=3, updated_at=222.0)
+    scoped_clock[0] = 222.0
+    scoped_session.record_reply_context(scope=second_scope, delivery_record=delivered)
+
+    fourth_scope = scoped_event("repeat-scope-4")
+    scoped_fourth = observe_scoped(scoped_session, fourth_scope, 230.0)
+    scoped_fourth_hint = scoped_fourth.style_hint.lower()
+    assert "similar_question_count_this_session=4" in scoped_fourth_hint, scoped_fourth_hint
+    assert (
+        'avoid repeating nana\'s recent wording: "delivered attested reply"'
+        in scoped_fourth_hint
+    ), scoped_fourth_hint
+    assert "generated only must not appear" not in scoped_fourth_hint, scoped_fourth_hint
+    assert "newer generated only must not appear" not in scoped_fourth_hint, scoped_fourth_hint
     print("  PASSED")
 
 
@@ -473,6 +574,7 @@ def _test_bridge_short_quiet_room_uses_repeat_awareness():
                 "source": "discord",
                 "event_type": "message",
                 "text": "phòng nay im quá",
+                "channel_id": 2,
                 "author_name": "linhcute2746",
                 "metadata": {
                     "message_id": f"9h-quiet-repeat-{idx}",
@@ -502,6 +604,7 @@ def _test_bridge_short_quiet_room_uses_repeat_awareness():
             "source": "discord",
             "event_type": "message",
             "text": "phòng nay im quá",
+            "channel_id": 2,
             "author_name": "linhcute2746",
             "metadata": {
                 "message_id": "9h-quiet-repeat-5",

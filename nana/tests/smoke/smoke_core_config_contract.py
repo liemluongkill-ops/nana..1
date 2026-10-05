@@ -7,7 +7,7 @@ uses local sentinels that fail the test if construction is attempted.
 from __future__ import annotations
 
 import asyncio
-from contextlib import redirect_stdout
+from contextlib import contextmanager, redirect_stdout
 from dataclasses import FrozenInstanceError
 import io
 import json
@@ -16,25 +16,105 @@ from pathlib import Path
 import subprocess
 import sys
 from types import SimpleNamespace
+import types
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-os.environ.setdefault("OPENAI" + "_API_KEY", "fixture-" + "openai")
-os.environ.setdefault("ELEVEN" + "_API_KEY", "fixture-" + "eleven")
-os.environ.setdefault("ELEVEN" + "_VOICE_ID", "fixture-voice")
-os.environ.setdefault("NANA_CHAT_PROVIDER", "openai")
-os.environ["NANA_DEBUG_NO_TTS"] = "0"
-os.environ["NANA_VOICE_TEST_MODE"] = "0"
+
+_PROTECTED_DATA_ROOT = (ROOT / "nana" / "data").resolve()
+_PROTECTED_LOG_ROOT = (ROOT / "nana" / "runtime_logs").resolve()
+_ALLOW_INTERNAL_CHILD = False
 
 
-from nana.runtime.startup_config_contract import (
-    build_startup_config_contract,
-    build_startup_config_snapshot,
-    format_startup_config_line,
+def _guarded_path(value):
+    if isinstance(value, int):
+        return None
+    try:
+        return Path(value).resolve()
+    except (OSError, TypeError, ValueError):
+        return None
+
+
+def _startup_audit_guard(event, args):
+    if event == "open" and args:
+        path = _guarded_path(args[0])
+        if path is not None:
+            folded = str(path).casefold()
+            if (
+                path.name.casefold() == ".env"
+                or path.name.casefold() == "token.txt"
+                or folded.startswith(str(_PROTECTED_DATA_ROOT).casefold())
+                or folded.startswith(str(_PROTECTED_LOG_ROOT).casefold())
+                or "\\.factory\\settings.json" in folded
+            ):
+                raise PermissionError(f"protected startup smoke path: {path.name}")
+    if event == "socket.connect":
+        caller = sys._getframe(1)
+        address = args[1] if len(args) > 1 else None
+        if (
+            caller.f_code.co_name in {"socketpair", "_fallback_socketpair"}
+            and Path(caller.f_code.co_filename).name == "socket.py"
+            and isinstance(address, tuple)
+            and address
+            and address[0] in {"127.0.0.1", "::1"}
+        ):
+            return
+    if event in {"socket.connect", "socket.getaddrinfo"}:
+        raise PermissionError("network disabled in startup config smoke")
+    if event in {"subprocess.Popen", "os.system", "os.posix_spawn"}:
+        if not _ALLOW_INTERNAL_CHILD:
+            raise PermissionError("process creation disabled in startup config smoke")
+
+
+sys.addaudithook(_startup_audit_guard)
+
+# The smoke process owns these synthetic values. It never reads or restores a
+# host credential and exits after the checks.
+os.environ.update(
+    {
+        "OPENAI_API_KEY": "test-openai-secret",
+        "ELEVEN_API_KEY": "test-eleven-secret",
+        "ELEVEN_VOICE_ID": "test-voice-id",
+        "NANA_PRESENCE_SESSION_TOKEN": "",
+        "NANA_AVATAR_GATEWAY_TOKEN": "",
+        "NANA_CONTEXT_PRIVATE_MODE": "legacy",
+        "NANA_CONTEXT_PUBLIC_GPT_MODE": "legacy",
+        "NANA_CONTEXT_CUM2_MODE": "legacy",
+        "NANA_CONTEXT_AUTONOMY_MODE": "legacy",
+        "NANA_CONTEXT_BUDGET_POLICY_REVISION": "",
+    }
 )
+
+
+_original_path_exists = Path.exists
+
+
+def _env_blind_exists(path):
+    if path.name.casefold() == ".env":
+        return False
+    return _original_path_exists(path)
+
+
+Path.exists = _env_blind_exists
+try:
+    nana_package = types.ModuleType("nana")
+    nana_package.__path__ = [str(ROOT / "nana")]
+    runtime_package = types.ModuleType("nana.runtime")
+    runtime_package.__path__ = [str(ROOT / "nana" / "runtime")]
+    sys.modules["nana"] = nana_package
+    sys.modules["nana.runtime"] = runtime_package
+    from nana.runtime.startup_config_contract import (
+        build_startup_config_contract,
+        build_startup_config_snapshot,
+        format_startup_config_line,
+    )
+finally:
+    Path.exists = _original_path_exists
+
 
 
 def _config(**overrides):
@@ -90,8 +170,43 @@ def _contract(*, env=None, **config_overrides):
     )
 
 
+@contextmanager
+def _app_lazy_import_fixtures():
+    modules = {
+        "nana.autonomy.llm_banter": types.SimpleNamespace(
+            get_banter=lambda *_a, **_k: None,
+            init_banter=lambda *_a, **_k: None,
+        ),
+        "nana.autonomy.web_context": types.SimpleNamespace(
+            init_scraper=lambda *_a, **_k: None,
+        ),
+        "nana.cli.handle_text": types.SimpleNamespace(
+            handle_text=lambda *_a, **_k: None,
+        ),
+        "nana.integrations.vts": types.SimpleNamespace(
+            ensure_vts_ready=lambda *_a, **_k: None,
+            vts_mouth_loop=lambda *_a, **_k: None,
+        ),
+        "nana.runtime.presence_session_server": types.SimpleNamespace(
+            PresenceCaptureOutcome=object,
+            PresenceDisplayError=RuntimeError,
+            PresenceSessionServer=object,
+            configure_presence_session_status=lambda *_a, **_k: None,
+            set_active_presence_session_server=lambda *_a, **_k: None,
+        ),
+        "nana.runtime.presence_audio_quality": types.SimpleNamespace(
+            evaluate_presence_audio=lambda *_a, **_k: None,
+        ),
+        "nana.runtime.pulse": types.SimpleNamespace(
+            nana_pulse=lambda *_a, **_k: None,
+        ),
+    }
+    with mock.patch.dict(sys.modules, modules):
+        yield
+
+
 def test_current_and_default_contract_are_valid() -> None:
-    current = build_startup_config_contract()
+    current = build_startup_config_contract(env={}, config_source=_config())
     default = _contract()
 
     assert current.is_valid, current.errors
@@ -109,6 +224,70 @@ def test_current_and_default_contract_are_valid() -> None:
     assert default.snapshot.presence_session_timeout_seconds == 15.0
     assert "presence_session=off:0.0.0.0:8765" in format_startup_config_line(default)
     print("  current/default: valid")
+
+
+def test_private_web_defaults_on_and_explicit_off_remains_available() -> None:
+    default = _contract()
+    assert default.is_valid
+    assert default.snapshot.private_web_chat_enabled is True
+    assert default.snapshot.private_web_chat_host == '127.0.0.1'
+    assert default.snapshot.private_web_chat_port == 8767
+    for value in ('0', 'false', 'off'):
+        disabled = _contract(env={'NANA_PRIVATE_WEB_CHAT_ENABLED': value})
+        assert disabled.is_valid
+        assert disabled.snapshot.private_web_chat_enabled is False
+    invalid = _contract(env={'NANA_PRIVATE_WEB_CHAT_ENABLED': 'maybe'})
+    assert not invalid.is_valid
+    exposed = _contract(env={'NANA_PRIVATE_WEB_CHAT_HOST': '0.0.0.0'})
+    assert not exposed.is_valid
+    print('  private web: default ON, explicit OFF, invalid/remote binding rejected')
+
+
+def test_context_modes_default_legacy_and_fail_closed() -> None:
+    from nana import config as runtime_config
+
+    default = _contract(env={})
+    snapshot = default.snapshot
+    assert default.is_valid, default.errors
+    assert snapshot.context_private_mode == "legacy"
+    assert snapshot.context_public_gpt_mode == "legacy"
+    assert snapshot.context_cum2_mode == "legacy"
+    assert snapshot.context_autonomy_mode == "legacy"
+    assert snapshot.context_budget_policy_revision == ""
+    assert snapshot.private_web_chat_enabled is True
+    assert runtime_config.NANA_CONTEXT_PRIVATE_MODE == "legacy"
+    assert runtime_config.NANA_CONTEXT_PUBLIC_GPT_MODE == "legacy"
+    assert runtime_config.NANA_CONTEXT_CUM2_MODE == "legacy"
+    assert runtime_config.NANA_CONTEXT_AUTONOMY_MODE == "legacy"
+    assert runtime_config.NANA_CONTEXT_BUDGET_POLICY_REVISION == ""
+
+    variables = (
+        "NANA_CONTEXT_PRIVATE_MODE",
+        "NANA_CONTEXT_PUBLIC_GPT_MODE",
+        "NANA_CONTEXT_CUM2_MODE",
+        "NANA_CONTEXT_AUTONOMY_MODE",
+    )
+    for name in variables:
+        for accepted in ("legacy", "shadow"):
+            contract = _contract(env={name: accepted})
+            assert contract.is_valid, (name, accepted, contract.errors)
+        invalid = _contract(env={name: "unexpected"})
+        assert not invalid.is_valid
+        assert any(name in error for error in invalid.errors), invalid.errors
+
+        for revision in ("", "fabricated-approved-looking-revision"):
+            canonical = _contract(
+                env={
+                    name: "canonical",
+                    "NANA_CONTEXT_BUDGET_POLICY_REVISION": revision,
+                }
+            )
+            assert not canonical.is_valid
+            assert "budget_policy_unapproved" in canonical.errors
+
+    rendered = format_startup_config_line(default)
+    assert "context=private:legacy/public:legacy/cum2:legacy/autonomy:legacy" in rendered
+    print("  context modes: default legacy, invalid/canonical fail closed")
 
 
 def test_snapshot_is_immutable() -> None:
@@ -202,13 +381,11 @@ def test_main_model_is_resolved_by_provider() -> None:
 
 
 def test_openai_key_readiness_is_fatal_and_sanitized() -> None:
-    key_name = "OPENAI" + "_API_KEY"
-    placeholder = "OPENAI_KEY_" + "CUA_BAN"
-    for value in ("", placeholder):
-        contract = _contract(**{key_name: value})
+    for value in ("", "OPENAI_KEY_" + "CUA_BAN"):
+        contract = _contract(OPENAI_API_KEY=value)
         assert not contract.is_valid and contract.status == "invalid"
         assert contract.snapshot.openai_key_present is False
-        assert any(key_name in error for error in contract.errors)
+        assert any("OPENAI_API_KEY" in error for error in contract.errors)
         assert value not in repr(contract.snapshot) if value else True
     print("  missing provider credential rejected safely")
 
@@ -622,7 +799,7 @@ def test_app_prints_each_degraded_warning() -> None:
         app._shutdown_runtime = harmless_shutdown
         app.vision_previewer.clear_preview_cache = lambda: 0
         output = io.StringIO()
-        with redirect_stdout(output):
+        with _app_lazy_import_fixtures(), redirect_stdout(output):
             asyncio.run(app.main())
     finally:
         app.build_startup_config_contract = original_build
@@ -679,17 +856,87 @@ def test_app_fails_before_runtime_construction() -> None:
 
 
 def test_invalid_bridge_poll_does_not_break_app_import() -> None:
-    env = os.environ.copy()
+    env = {
+        name: os.environ[name]
+        for name in (
+            "SystemRoot",
+            "WINDIR",
+            "PATH",
+            "TEMP",
+            "TMP",
+            "COMSPEC",
+            "PATHEXT",
+        )
+        if name in os.environ
+    }
     env.update(
         {
             "PYTHONDONTWRITEBYTECODE": "1",
             "PYTHONPATH": str(ROOT) + os.pathsep + env.get("PYTHONPATH", ""),
+            "USERPROFILE": str(ROOT),
             "NANA_EXTERNAL_BRIDGE_POLL_SECONDS": "not-a-number",
+            "OPENAI_API_KEY": "test-openai-secret",
+            "ELEVEN_API_KEY": "test-eleven-secret",
+            "ELEVEN_VOICE_ID": "test-voice-id",
+            "NANA_CONTEXT_PRIVATE_MODE": "legacy",
+            "NANA_CONTEXT_PUBLIC_GPT_MODE": "legacy",
+            "NANA_CONTEXT_CUM2_MODE": "legacy",
+            "NANA_CONTEXT_AUTONOMY_MODE": "legacy",
+            "NANA_CONTEXT_BUDGET_POLICY_REVISION": "",
         }
     )
     code = r"""
 import asyncio
+from pathlib import Path
+import sys
+import types
+
+root = (Path.cwd() / 'nana').resolve()
+data_root = (root / 'data').resolve()
+log_root = (root / 'runtime_logs').resolve()
+
+def protected(value):
+    if isinstance(value, int):
+        return False
+    try:
+        path = Path(value).resolve()
+    except (OSError, TypeError, ValueError):
+        return False
+    folded = str(path).casefold()
+    return (
+        path.name.casefold() in {'.env', 'token.txt'}
+        or folded.startswith(str(data_root).casefold())
+        or folded.startswith(str(log_root).casefold())
+        or '\\.factory\\settings.json' in folded
+    )
+
+def audit(event, args):
+    if event == 'open' and args and protected(args[0]):
+        raise PermissionError('protected child path')
+    if event == 'socket.connect':
+        caller = sys._getframe(1)
+        address = args[1] if len(args) > 1 else None
+        if (caller.f_code.co_name in {'socketpair', '_fallback_socketpair'}
+                and Path(caller.f_code.co_filename).name == 'socket.py'
+                and isinstance(address, tuple) and address
+                and address[0] in {'127.0.0.1', '::1'}):
+            return
+    if event in {'socket.connect', 'socket.getaddrinfo'}:
+        raise PermissionError('network disabled')
+    if event in {'subprocess.Popen', 'os.system', 'os.posix_spawn'}:
+        raise PermissionError('nested process disabled')
+
+sys.addaudithook(audit)
+original_exists = Path.exists
+Path.exists = lambda path: False if path.name.casefold() == '.env' else original_exists(path)
+nana_package = types.ModuleType('nana')
+nana_package.__path__ = [str(root)]
+runtime_package = types.ModuleType('nana.runtime')
+runtime_package.__path__ = [str(root / 'runtime')]
+sys.modules['nana'] = nana_package
+sys.modules['nana.runtime'] = runtime_package
 from nana.cli import app
+Path.exists = original_exists
 
 calls = []
 def forbidden(name):
@@ -706,15 +953,20 @@ asyncio.run(app.main())
 assert calls == [], calls
 print('invalid-poll-fail-fast')
 """
-    result = subprocess.run(
-        [sys.executable, "-B", "-c", code],
-        cwd=ROOT,
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=30,
-        check=False,
-    )
+    global _ALLOW_INTERNAL_CHILD
+    _ALLOW_INTERNAL_CHILD = True
+    try:
+        result = subprocess.run(
+            [sys.executable, "-B", "-c", code],
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    finally:
+        _ALLOW_INTERNAL_CHILD = False
     assert result.returncode == 0, (result.stdout, result.stderr)
     assert "invalid-poll-fail-fast" in result.stdout
     assert "NANA_EXTERNAL_BRIDGE_POLL_SECONDS" in result.stdout
@@ -724,6 +976,8 @@ print('invalid-poll-fail-fast')
 def main() -> None:
     tests = [
         test_current_and_default_contract_are_valid,
+        test_private_web_defaults_on_and_explicit_off_remains_available,
+        test_context_modes_default_legacy_and_fail_closed,
         test_snapshot_is_immutable,
         test_snapshot_and_summary_do_not_expose_secrets,
         test_unsupported_provider_is_fatal,

@@ -17,6 +17,17 @@ PROTOCOL_NAME = "nana.avatar.mouth.v1"
 STALE_AFTER_MS = 180
 
 
+def pcm_level_to_envelope(value: float) -> float:
+    """Normalize playback amplitude once for legacy and scoped consumers."""
+    try:
+        level = float(value)
+    except (ValueError, TypeError):
+        level = 0.0
+    if not math.isfinite(level):
+        level = 0.0
+    return math.tanh(6.0 * max(0.0, min(1.0, level) - 0.003))
+
+
 class AvatarMouthStream:
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -73,13 +84,7 @@ class AvatarMouthStream:
         No PCM bytes are retained. The 2D MouthOpen gain is not reused because
         it clips normal speech to 1.0 and flattens the 3D articulation.
         """
-        try:
-            level = float(value)
-        except (ValueError, TypeError):
-            level = 0.0
-        if not math.isfinite(level):
-            level = 0.0
-        envelope = math.tanh(6.0 * max(0.0, min(1.0, level) - 0.003))
+        envelope = pcm_level_to_envelope(value)
         # This is an already normalized envelope, not a second gain input.
         return self.publish(open_value=envelope, energy=0.0, viseme="aa")
 

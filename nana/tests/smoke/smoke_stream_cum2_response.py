@@ -5,12 +5,27 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import sys
+import types
 from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+
+def _install_lightweight_nana_packages() -> None:
+    if "nana" not in sys.modules:
+        package = types.ModuleType("nana")
+        package.__path__ = [str(ROOT / "nana")]
+        sys.modules["nana"] = package
+    if "nana.runtime" not in sys.modules:
+        runtime = types.ModuleType("nana.runtime")
+        runtime.__path__ = [str(ROOT / "nana" / "runtime")]
+        sys.modules["nana.runtime"] = runtime
+
+
+_install_lightweight_nana_packages()
 
 
 NOW = 1_700_000_200.0
@@ -265,7 +280,7 @@ def test_provider_error_returns_typed_failure_without_artifact() -> None:
     assert len(caller.calls) == 1
 
 
-def main() -> None:
+def _run_tests() -> int:
     tests = (
         test_flag_off_never_calls_provider,
         test_public_turn_generates_correlated_public_artifact,
@@ -273,10 +288,23 @@ def main() -> None:
         test_source_text_mismatch_is_rejected_before_provider,
         test_provider_error_returns_typed_failure_without_artifact,
     )
+    passed = 0
+    failed = 0
     for test in tests:
-        test()
-        print(f"PASS {test.__name__}")
-    print(f"smoke_stream_cum2_response: {len(tests)}/{len(tests)} passed")
+        try:
+            test()
+            passed += 1
+            print(f"PASS {test.__name__}")
+        except Exception as exc:
+            failed += 1
+            print(f"FAIL {test.__name__}: {type(exc).__name__}: {exc}")
+    print(f"SUMMARY: {passed} passed, {failed} failed")
+    print(f"smoke_stream_cum2_response: {passed}/{len(tests)} passed")
+    return 0 if failed == 0 else 1
+
+
+def main() -> None:
+    raise SystemExit(_run_tests())
 
 
 if __name__ == "__main__":

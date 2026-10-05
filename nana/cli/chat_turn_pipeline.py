@@ -8,13 +8,17 @@ and memory writes. Slash/system command routing stays in handle_text.py.
 from __future__ import annotations
 
 import asyncio
+from contextvars import ContextVar
 import time
 import uuid
 
 from nana.cli import globals as cli_globals
 from nana.cli.globals import set_runtime_turn_state
+from nana.cli.web_commands import open_nana_web
 from nana.config import (
     GPT_COOLDOWN,
+    LLMGATE_CHEAP_MODEL,
+    LLMGATE_MAIN_MODEL,
     PRIVATE_VOICE_OVERLAP_COALESCE_MS,
     PRIVATE_VOICE_OVERLAP_ENABLED,
     PRIVATE_VOICE_OVERLAP_MAX_CHARS,
@@ -54,6 +58,7 @@ from nana.runtime.reply_stream_privacy import ReplyStreamPrivacy
 # Kept as a compatibility export for older smoke/diagnostic callers. Session
 # continuity no longer invokes the pre-reply summary API.
 from nana.runtime.memory_spine import get_memory_spine
+from nana.runtime.mood_continuity import observe_mood_text
 from nana.runtime.persona import observe_text_for_persona
 from nana.runtime.session_checkpoint import record_private_turn
 from nana.runtime.private_voice_overlap import PrivateVoiceOverlapTurn
@@ -65,17 +70,22 @@ from nana.runtime.voice_reply_budget import (
     voice_stream_dispatch_config,
     voice_budget_log_enabled,
 )
+from nana.runtime.private_turn_observer import PrivateTurnResult
 from nana.brain.gpt import (
     StreamingReplySurfaceSanitizer,
     TerminalAudioTagStreamSanitizer,
+    _public_cross_session_query_eligible,
     ask_gpt,
     ask_gpt_stream,
+    is_temporal_question,
+    llmgate_public_chat_model,
     strip_terminal_audio_tags,
 )
 from nana.integrations.vts import trigger_expression_lifecycle
 
 
 PRIVATE_VOICE_POLICY = "full"
+VOICE_ADMISSION_REJECTED_REASON = "voice_admission_rejected"
 EXPLICIT_MEMORY_SAVE_FAILURE_REPLY = (
     "Lần này con chưa lưu được nội dung đó vào trí nhớ lâu dài. "
     "Ba thử lại sau nhé."
@@ -116,6 +126,96 @@ def _history_reply_from_stream(text: str) -> str:
     return ' '.join(redact_history_text(strip_terminal_audio_tags(text)).split())
 
 
+def _capture_private_model_snapshot(*, text, story_mode, casual_mode):
+    """Resolve the private lane, then capture one immutable model-turn view."""
+
+    from nana.runtime.context_contracts import ContextContractError, Lane
+    from nana.runtime.context_runtime import capture_turn_snapshot
+    from nana.runtime.context_shadow import resolve_context_turn
+
+    boundary, turn = resolve_context_turn(
+        text=text,
+        viewer_name=None,
+        stream_mode=False,
+        public_platform=None,
+        metadata=None,
+        private_model=(LLMGATE_CHEAP_MODEL if casual_mode else LLMGATE_MAIN_MODEL),
+        public_model=llmgate_public_chat_model(),
+        story_mode=story_mode,
+        casual_mode=casual_mode,
+        temporal_intent=is_temporal_question(text),
+        grounding_intent=_public_cross_session_query_eligible(text),
+    )
+    if (
+        getattr(boundary, "public", True)
+        or turn.lane is not Lane.PRIVATE_OWNER
+        or turn.resolved_request is None
+    ):
+        raise ContextContractError("private_source_capture_denied")
+    return (boundary, turn), capture_turn_snapshot(turn.resolved_request)
+
+
+def _observe_canonical_mood_after_capture(prepared_turn, snapshot, text):
+    """Keep one post-capture mood observation outside prompt construction."""
+
+    if snapshot is None or not isinstance(prepared_turn, tuple) or len(prepared_turn) != 2:
+        return
+    boundary, turn = prepared_turn
+    if getattr(boundary, "public", True) or getattr(turn, "mode", None) != "canonical":
+        return
+    try:
+        observe_mood_text(
+            text,
+            lane="private_owner",
+            source="private_chat_pipeline",
+            event_type="message",
+        )
+    except Exception:
+        # Mood continuity was already best-effort in the model builders.
+        return
+
+
+_CURRENT_PRIVATE_OBSERVER: ContextVar[object | None] = ContextVar(
+    "nana_current_private_turn_observer", default=None
+)
+
+
+def _observer_call(method: str, *args, **kwargs) -> None:
+    observer = _CURRENT_PRIVATE_OBSERVER.get()
+    callback = getattr(observer, method, None) if observer is not None else None
+    if not callable(callback):
+        return
+    try:
+        callback(*args, **kwargs)
+    except Exception:
+        # Observer delivery is strictly observational and cannot affect Core.
+        return
+
+
+def _observer_final(text: str) -> None:
+    if isinstance(text, str) and text.strip():
+        _observer_call("on_text_final", text)
+
+
+def _notify_voice_admission(queued_callback, failed_callback, ticket) -> None:
+    if type(ticket) is not int:
+        return
+    if ticket > 0:
+        callback = queued_callback
+        args = (ticket,)
+    elif ticket == 0:
+        callback = failed_callback
+        args = (VOICE_ADMISSION_REJECTED_REASON,)
+    else:
+        return
+    if not callable(callback):
+        return
+    try:
+        callback(*args)
+    except Exception:
+        return
+
+
 def say_with_voice_budget(
     voice,
     say_text,
@@ -124,15 +224,27 @@ def say_with_voice_budget(
     story_mode: bool = False,
     casual_mode: bool = False,
     note: bool = True,
+    receipt_context=None,
+    on_voice_queued=None,
+    on_voice_failed=None,
 ):
     if mode is None:
         mode = "story" if story_mode else "casual" if casual_mode else "chat"
     result = get_voice_reply_budget().prepare(say_text, mode=mode)
+    voice_ticket = 0
     if result.voice_text:
-        try:
-            voice.say(result.voice_text, voice_mode=result.mode)
-        except TypeError:
-            voice.say(result.voice_text)
+        if receipt_context is not None:
+            voice_ticket = voice.say(
+                result.voice_text,
+                voice_mode=result.mode,
+                receipt_context=receipt_context,
+            )
+        else:
+            try:
+                voice_ticket = voice.say(result.voice_text, voice_mode=result.mode)
+            except TypeError:
+                voice_ticket = voice.say(result.voice_text)
+        _notify_voice_admission(on_voice_queued, on_voice_failed, voice_ticket)
     if result.changed and note and voice_budget_log_enabled():
         print(
             "🎙️ Voice budget: "
@@ -141,7 +253,7 @@ def say_with_voice_budget(
     return result
 
 
-async def handle_chat_turn(vts, voice, text: str, loop, text_lower: str | None = None) -> bool:
+async def _handle_chat_turn_impl(vts, voice, text: str, loop, text_lower: str | None = None) -> bool:
     turn_started_at = time.perf_counter()
     original_text = str(text or '')
     text = redact_history_text(original_text)
@@ -150,10 +262,32 @@ async def handle_chat_turn(vts, voice, text: str, loop, text_lower: str | None =
     casual_mode = is_casual_ping(text_lower)
     reply_mode = "story" if story_mode else "casual" if casual_mode else "chat"
     voice_policy = _private_voice_policy_for(reply_mode)
+    private_receipt_context = None
+    observer = _CURRENT_PRIVATE_OBSERVER.get()
+    observer_identity = getattr(observer, "identity", None)
+    if observer_identity is not None:
+        try:
+            from nana.runtime.private_voice_receipts import PrivateVoiceContext
+
+            private_receipt_context = PrivateVoiceContext(
+                observer_identity.server_epoch,
+                observer_identity.session_id,
+                observer_identity.turn_id,
+                observer_identity.correlation_id,
+            )
+        except (AttributeError, TypeError, ValueError):
+            private_receipt_context = None
     avatar_reply = None
     avatar_turn = None
 
-    def _say_with_voice_budget(say_text, *, mode: str | None = None, note: bool = True):
+    def _say_with_voice_budget(
+        say_text,
+        *,
+        mode: str | None = None,
+        note: bool = True,
+        emit_final: bool = True,
+    ):
+        admission_notifications = []
         result = say_with_voice_budget(
             voice,
             say_text,
@@ -161,7 +295,18 @@ async def handle_chat_turn(vts, voice, text: str, loop, text_lower: str | None =
             story_mode=story_mode,
             casual_mode=casual_mode,
             note=note,
+            receipt_context=private_receipt_context,
+            on_voice_queued=lambda ticket: admission_notifications.append(
+                ("on_voice_queued", ticket)
+            ),
+            on_voice_failed=lambda reason: admission_notifications.append(
+                ("on_voice_failed", reason)
+            ),
         )
+        if emit_final:
+            _observer_final(str(say_text or "").strip())
+            for method, value in admission_notifications:
+                _observer_call(method, value)
         if avatar_turn is not None and result.voice_text:
             avatar_turn.consider(avatar_reply if avatar_reply is not None else say_text)
         return result
@@ -172,8 +317,10 @@ async def handle_chat_turn(vts, voice, text: str, loop, text_lower: str | None =
         return False
 
     if text_lower == "mở ai":
+        was_active = cli_globals.ai_active
         cli_globals.ai_active = True
         print("🟢 Nana đã thức")
+        open_nana_web(manual=True, reopen=not was_active)
         return False
 
     if not cli_globals.ai_active:
@@ -286,6 +433,36 @@ async def handle_chat_turn(vts, voice, text: str, loop, text_lower: str | None =
         save_memory_async()
         return False
     else:
+        prepared_private_turn = None
+        turn_snapshot = None
+        try:
+            prepared_private_turn, turn_snapshot = _capture_private_model_snapshot(
+                text=text,
+                story_mode=story_mode,
+                casual_mode=casual_mode,
+            )
+            _observe_canonical_mood_after_capture(
+                prepared_private_turn,
+                turn_snapshot,
+                text,
+            )
+        except Exception as exc:
+            # Old isolated harnesses may intentionally omit the new source APIs.
+            if getattr(exc, "code", None) != "source_snapshot_api_unavailable":
+                raise
+        model_snapshot_kwargs = (
+            {
+                "_prepared_private_turn": prepared_private_turn,
+                "_turn_snapshot": turn_snapshot,
+            }
+            if turn_snapshot is not None
+            else {}
+        )
+        stream_awareness = (
+            turn_snapshot.awareness_mapping()
+            if turn_snapshot is not None
+            else None
+        )
         full_reply_parts = []
         voice_buf = ""
         printed_prefix = False
@@ -297,7 +474,7 @@ async def handle_chat_turn(vts, voice, text: str, loop, text_lower: str | None =
             mode=voice_policy,
             truncate=not bool(full_voice_dispatch.get("tail_full")),
         )
-        defer_voice_stream = should_defer_stream_voice(voice_policy)
+        defer_voice_stream = private_receipt_context is not None or should_defer_stream_voice(voice_policy)
         voice_packets = 0
         VOICE_FLUSH_CHARS = 120 if story_mode else 60
         ttd_turn = None
@@ -342,6 +519,7 @@ async def handle_chat_turn(vts, voice, text: str, loop, text_lower: str | None =
                         chunk_target_chars=PRIVATE_VOICE_TTD_CHUNK_TARGET_CHARS,
                         chunk_max_chars=PRIVATE_VOICE_TTD_CHUNK_MAX_CHARS,
                         turn_started_at=turn_started_at,
+                        receipt_context=private_receipt_context,
                     )
                 elif callable(record_bypass):
                     record_bypass(reason)
@@ -364,22 +542,41 @@ async def handle_chat_turn(vts, voice, text: str, loop, text_lower: str | None =
                         maximum_chars=PRIVATE_VOICE_OVERLAP_MAX_CHARS,
                         coalesce_ms=PRIVATE_VOICE_OVERLAP_COALESCE_MS,
                         turn_started_at=turn_started_at,
+                        receipt_context=private_receipt_context,
                     )
                 elif callable(record_bypass):
                     record_bypass(reason)
 
         def queue_voice_text(voice_text: str):
-            try:
-                voice.say(voice_text, voice_mode=voice_policy)
-            except TypeError:
-                voice.say(voice_text)
+            if private_receipt_context is not None:
+                voice_ticket = voice.say(
+                    voice_text,
+                    voice_mode=voice_policy,
+                    receipt_context=private_receipt_context,
+                )
+            else:
+                try:
+                    voice_ticket = voice.say(voice_text, voice_mode=voice_policy)
+                except TypeError:
+                    voice_ticket = voice.say(voice_text)
+            _notify_voice_admission(
+                lambda ticket: _observer_call("on_voice_queued", ticket),
+                lambda reason: _observer_call("on_voice_failed", reason),
+                voice_ticket,
+            )
             avatar_turn.consider(voice_text)
 
         if awareness_question:
-            awareness = build_live_awareness_snapshot()
+            awareness = stream_awareness or build_live_awareness_snapshot()
             checkpoint_eligible = True
             try:
-                reply = ask_gpt(text, story_mode=story_mode, casual_mode=casual_mode)
+                reply = await asyncio.to_thread(
+                    ask_gpt,
+                    text,
+                    story_mode=story_mode,
+                    casual_mode=casual_mode,
+                    **model_snapshot_kwargs,
+                )
                 avatar_reply = reply
                 reply = finalize_live_reply(
                     reply,
@@ -444,8 +641,7 @@ async def handle_chat_turn(vts, voice, text: str, loop, text_lower: str | None =
 
         # Task 7C Fix: capture awareness BEFORE streaming, so the chat moment
         # gets proper browser context (app/zone/conf/focus) instead of empty.
-        stream_awareness = None
-        if not awareness_question:
+        if not awareness_question and stream_awareness is None:
             # Only build if we didn't already build above (avoid double build)
             try:
                 stream_awareness = build_live_awareness_snapshot()
@@ -453,13 +649,20 @@ async def handle_chat_turn(vts, voice, text: str, loop, text_lower: str | None =
                 pass
 
         try:
-            async for chunk in ask_gpt_stream(text, story_mode=story_mode, casual_mode=casual_mode):
+            async for chunk in ask_gpt_stream(
+                text,
+                story_mode=story_mode,
+                casual_mode=casual_mode,
+                **model_snapshot_kwargs,
+            ):
                 cleaned_chunk = reply_stream.feed(privacy_stream.feed(chunk))
+                observed_parts = []
                 for ch in cleaned_chunk:
                     visible = terminal_stream.feed(ch)
                     if not printed_prefix:
                         visible = visible.lstrip()
                     if visible:
+                        observed_parts.append(visible)
                         if not printed_prefix:
                             print("🤖 Nana:", visible, end="", flush=True)
                             printed_prefix = True
@@ -475,12 +678,17 @@ async def handle_chat_turn(vts, voice, text: str, loop, text_lower: str | None =
                         flush_voice(force=False, sentence_boundary=ch in ".!?。！？")
                     if ch == "]" and len(voice_buf) >= 15:
                         flush_voice(force=False, sentence_boundary=False)
+                _observer_call('on_text_delta', ''.join(observed_parts))
+                if observer is not None:
+                    await asyncio.sleep(0)
             trailing_chunk = reply_stream.feed(privacy_stream.flush()) + reply_stream.flush()
+            observed_parts = []
             for ch in trailing_chunk:
                 visible = terminal_stream.feed(ch)
                 if not printed_prefix:
                     visible = visible.lstrip()
                 if visible:
+                    observed_parts.append(visible)
                     if not printed_prefix:
                         print("🤖 Nana:", visible, end="", flush=True)
                         printed_prefix = True
@@ -497,6 +705,7 @@ async def handle_chat_turn(vts, voice, text: str, loop, text_lower: str | None =
                 if ch == "]" and len(voice_buf) >= 15:
                     flush_voice(force=False, sentence_boundary=False)
             trailing_visible = terminal_stream.flush()
+            _observer_call('on_text_delta', ''.join(observed_parts) + trailing_visible)
             if trailing_visible:
                 if not printed_prefix:
                     trailing_visible = trailing_visible.lstrip()
@@ -605,13 +814,20 @@ async def handle_chat_turn(vts, voice, text: str, loop, text_lower: str | None =
             log_event("errors", "GPT stream returned no chunks; falling back to non-stream chat reply")
             checkpoint_eligible = True
             try:
-                reply = ask_gpt(text, story_mode=story_mode, casual_mode=casual_mode)
+                reply = await asyncio.to_thread(
+                    ask_gpt,
+                    text,
+                    story_mode=story_mode,
+                    casual_mode=casual_mode,
+                    **model_snapshot_kwargs,
+                )
                 avatar_reply = reply
                 reply = finalize_live_reply(
                     reply,
                     user_text=text,
                     story_mode=story_mode,
                     casual_mode=casual_mode,
+                    awareness=stream_awareness,
                 )
             except Exception as exc:
                 log_event("errors", f"GPT fallback after empty stream failed: {exc}")
@@ -650,6 +866,7 @@ async def handle_chat_turn(vts, voice, text: str, loop, text_lower: str | None =
         # truncate the stored history while voice had received the complete text.
         avatar_reply = "".join(full_reply_parts)
         reply = _history_reply_from_stream(avatar_reply)
+        _observer_final(reply)
 
         update_emotion(text, reply)
         save_chat_log(f"USER: {text}")
@@ -672,3 +889,57 @@ async def handle_chat_turn(vts, voice, text: str, loop, text_lower: str | None =
         _record_private_checkpoint(text, reply, private_event_id)
         save_memory_async()
         return False
+
+
+async def handle_chat_turn(
+    vts,
+    voice,
+    text: str,
+    loop,
+    text_lower: str | None = None,
+    *,
+    observer=None,
+):
+    """Canonical private turn entry with an optional observational sink."""
+
+    token = _CURRENT_PRIVATE_OBSERVER.set(observer)
+    if observer is not None:
+        _observer_call("on_thinking")
+    try:
+        result = await _handle_chat_turn_impl(vts, voice, text, loop, text_lower)
+        if observer is None:
+            return result
+        final_text = str(getattr(observer, "final_text", "") or "")
+        record = getattr(observer, "_record", None)
+        snapshot = getattr(record, "snapshot", None)
+        if not final_text and snapshot is not None:
+            final_text = str(getattr(snapshot, "final_text", "") or "")
+        snapshot_state = str(getattr(snapshot, "turn_state", "") or "")
+        status = snapshot_state if snapshot_state in {"complete", "failed", "unknown"} else (
+            "complete" if final_text else "failed"
+        )
+        reason = getattr(snapshot, "reason_code", None) if snapshot is not None else None
+        if reason is None and not final_text and status == "failed":
+            reason = "no_final_text"
+        voice_ticket = getattr(observer, "voice_ticket", None)
+        terminal = PrivateTurnResult(
+            bool(result),
+            status,
+            final_text,
+            reason,
+            voice_ticket if type(voice_ticket) is int else None,
+        )
+        _observer_call("on_terminal", terminal)
+        result_factory = getattr(observer, "result", None)
+        if isinstance(result_factory, PrivateTurnResult):
+            return result_factory
+        return terminal
+    except Exception as exc:
+        if observer is not None:
+            _observer_call(
+                "on_terminal",
+                PrivateTurnResult(False, "failed", "", "pipeline_failed", None),
+            )
+        raise
+    finally:
+        _CURRENT_PRIVATE_OBSERVER.reset(token)

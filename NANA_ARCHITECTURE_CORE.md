@@ -1,5 +1,25 @@
 # Nana Architecture Core
 
+## 2026-10-02 - Context and transport ownership clarification
+
+Conceptual architecture remains companion-first and streamer-capable.
+Context Runtime is a per-turn materialized context selection/compiler layer;
+Memory V2, awareness, persona/affect and social session remain domain owners.
+The new canonical compiled-prompt dispatcher is still gated/default legacy.
+'Canonical' in this runtime name is unrelated to canonical Wiki write access.
+
+Private Web Chat is an ingress/delivery adapter to the existing Core chat and
+VoiceEngine. Its bounded private acceptance does not authorize public visual,
+OBS/audience or memory promotion. Read NANA_CURRENT_CODE_TRUTH.md and
+NANA_CURRENT_STATUS.md for current modules, evidence and scope. Historical
+architecture sections below are not instructions to reopen stopped features.
+
+## Historical material
+
+Sections below keep their original dates and claim limits. Earlier
+labels such as current, pending and next step are historical; the
+reconciled overview above and newer owning local evidence take priority.
+
 ## 2026-07-08 Architecture Reading Model
 
 Nana architecture must be read in three levels:

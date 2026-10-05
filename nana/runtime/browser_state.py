@@ -1,8 +1,50 @@
 """nana.runtime.browser_state — browser state query helpers."""
 
+import math
 import time
 
 from nana.config import BROWSER_FRESH_SECONDS
+from nana.runtime.context_contracts import Freshness
+
+
+_FRESH_SECONDS = 45.0
+_WARM_SECONDS = 180.0
+_STALE_SECONDS = 540.0
+_FUTURE_SKEW_SECONDS = 2.0
+
+
+def normalized_browser_observed_at(observed_at, captured_at):
+    """Return an honest finite observation clock, tolerating tiny clock skew."""
+
+    if type(observed_at) not in (int, float) or type(captured_at) not in (int, float):
+        return None
+    observed = float(observed_at)
+    captured = float(captured_at)
+    if (
+        not math.isfinite(observed)
+        or not math.isfinite(captured)
+        or observed <= 0.0
+        or captured < 0.0
+        or observed > captured + _FUTURE_SKEW_SECONDS
+    ):
+        return None
+    return min(observed, captured)
+
+
+def classify_browser_freshness(observed_at, captured_at):
+    """Classify browser age once at the turn capture clock."""
+
+    observed = normalized_browser_observed_at(observed_at, captured_at)
+    if observed is None:
+        return Freshness.UNKNOWN
+    age = max(0.0, float(captured_at) - observed)
+    if age <= _FRESH_SECONDS:
+        return Freshness.FRESH
+    if age <= _WARM_SECONDS:
+        return Freshness.WARM
+    if age <= _STALE_SECONDS:
+        return Freshness.STALE
+    return Freshness.EXPIRED
 
 
 def browser_age_seconds(browser):

@@ -1,0 +1,10 @@
+{
+  "fixture_version": 1,
+  "lane": "public_stage",
+  "route": "interactive",
+  "model": "fixture-model",
+  "current_input": "CONTEXT-FIXTURE-PUBLIC-001",
+  "required_markers": ["Nana", "Public", "CONTEXT-FIXTURE-PUBLIC-VIEWER-001", "CONTEXT-FIXTURE-PUBLIC-TOPIC-001", "CONTEXT-FIXTURE-PUBLIC-ROOM-001"],
+  "forbidden_markers": ["PRIVATE-LEAK-SENTINEL", "CONTEXT-FIXTURE-PRIVATE-RETRIEVAL-001", "CONTEXT-FIXTURE-PRIVATE-CHECKPOINT-001", "CONTEXT-FIXTURE-PRIVATE-HISTORY-001"],
+  "wire_roles": ["system", "user"]
+}

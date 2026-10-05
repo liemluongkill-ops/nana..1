@@ -16,6 +16,10 @@ SAFE_ENV = {
     "NANA_VOICE_TEST_MODE": "1",
     "NANA_AUTONOMY_LLM_DISABLED": "1",
     "NANA_VTS_STARTUP_ENABLED": "0",
+    "NANA_WEB_AUTO_OPEN_ENABLED": "0",
+    "NANA_PRIVATE_WEB_CHAT_ENABLED": "0",
+    "NANA_EXTERNAL_BRIDGE_ENABLED": "0",
+    "NANA_PRIVATE_LLM_PROVIDER": "llmgate",
     "NANA_AVATAR_GATEWAY_ENABLED": "0",
     "NANA_PRESENCE_SESSION_ENABLED": "0",
     "NANA_STREAM_CUM0_ENABLED": "0",
@@ -40,6 +44,10 @@ def main() -> int:
     assert config.AVATAR_GATEWAY_ENABLED is False
     assert config.STREAM_CUM0_ENABLED is False
     assert config.STREAM_CUM5_VOICE_PLAYBACK_ENABLED is False
+    assert config.NANA_PRIVATE_WEB_CHAT_ENABLED is False
+    from nana.runtime.nana_web_launcher import NanaWebConfig
+    assert NanaWebConfig.from_environment().auto_open_enabled is False
+    assert NanaWebConfig.from_environment().app_root == ROOT / "components" / "nana-app"
     assert load_identity().get("self_name") == "Nana"
     assert load_users().get("owner", {}).get("is_default") is True
     assert callable(app.main)

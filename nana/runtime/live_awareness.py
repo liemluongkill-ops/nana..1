@@ -14,6 +14,8 @@ V2 fixes:
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import threading
 import time
@@ -21,6 +23,7 @@ import unicodedata
 from typing import Any
 
 from nana.runtime.context import context_snapshot
+from nana.runtime.context_contracts import SourceSnapshot
 
 
 # ─── Browser apps ────────────────────────────────────────────────────────────────
@@ -36,6 +39,7 @@ _sticky_state: dict[str, Any] = {
     "locked_title": "",     # title that was locked
     "locked_url": "",      # URL that was locked
     "locked_focus_text": "",  # focus_text that was locked
+    "locked_focus_source": "",  # source-owned precedence class at lock time
     "lock_reason": "",     # why it was locked ("awareness_record" / "user_question")
     "last_snap": {},       # last raw browser snapshot for comparison
     "unlock_at": 0.0,     # monotonic timestamp when auto-unlock happens
@@ -159,6 +163,7 @@ def lock_focus(snap: dict[str, Any], reason: str = "user_question") -> None:
         _sticky_state["locked_title"] = str(snap.get("browser_title") or snap.get("title") or "")
         _sticky_state["locked_url"] = str(snap.get("browser_url") or snap.get("url") or "")
         _sticky_state["locked_focus_text"] = str(snap.get("focus_text") or "")
+        _sticky_state["locked_focus_source"] = str(snap.get("focus_source") or "")
         _sticky_state["lock_reason"] = reason
         # Auto-unlock after 30s of no user activity
         _sticky_state["unlock_at"] = time.monotonic() + _sticky_state.get("auto_unlock_seconds", 30.0)
@@ -173,6 +178,7 @@ def unlock_focus_if_stale() -> bool:
             _sticky_state["locked_title"] = ""
             _sticky_state["locked_url"] = ""
             _sticky_state["locked_focus_text"] = ""
+            _sticky_state["locked_focus_source"] = ""
             _sticky_state["lock_reason"] = ""
             _sticky_state["unlock_at"] = 0.0
             return True
@@ -187,6 +193,7 @@ def reset_sticky_focus() -> None:
         _sticky_state["locked_title"] = ""
         _sticky_state["locked_url"] = ""
         _sticky_state["locked_focus_text"] = ""
+        _sticky_state["locked_focus_source"] = ""
         _sticky_state["lock_reason"] = ""
         _sticky_state["unlock_at"] = 0.0
         _sticky_state["last_snap"] = {}
@@ -395,6 +402,7 @@ def build_live_awareness_snapshot(source: dict[str, Any] | None = None) -> dict[
     elif not in_browser_app:
         stale_reason = "active_window_not_browser"
 
+    is_confirmed_active = bool(is_confirmed_active and browser_effective)
     return {
         "active_app": snap.get("active_app"),
         "active_title": snap.get("active_title"),
@@ -440,6 +448,185 @@ def build_live_awareness_snapshot(source: dict[str, Any] | None = None) -> dict[
         "awareness_mode": "read_only",
         "can_act": False,
     }
+
+
+def _awareness_content_revision(value: dict[str, Any]) -> str:
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return "sha256-" + hashlib.sha256(encoded).hexdigest()
+
+
+def capture_live_awareness_source(
+    source: dict[str, Any],
+    *,
+    browser_snapshot: SourceSnapshot,
+    captured_at: float,
+    captured_monotonic_at: float,
+) -> SourceSnapshot:
+    """Freeze a side-effect-free awareness view under the sticky-focus lock."""
+
+    snap = dict(source)
+    browser = dict(snap.get("browser") or {})
+    active_app = str(snap.get("active_app") or "").lower()
+    active_zone = snap.get("active_zone") or "unknown"
+    browser_available = bool(browser.get("available"))
+    browser_fresh = bool(browser.get("fresh"))
+    in_browser_app = active_app in BROWSER_APPS
+    browser_effective = browser_available and browser_fresh and in_browser_app
+
+    with _sticky_lock:
+        sticky = dict(_sticky_state)
+        unlock_at = sticky.get("unlock_at", 0.0)
+        is_locked = bool(sticky.get("locked")) and not (
+            type(unlock_at) in (int, float)
+            and unlock_at > 0.0
+            and captured_monotonic_at >= float(unlock_at)
+        )
+        lock_reason = str(sticky.get("lock_reason") or "") if is_locked else ""
+        locked_url = str(sticky.get("locked_url") or "")
+        locked_title = str(sticky.get("locked_title") or "")
+        locked_focus_text = str(sticky.get("locked_focus_text") or "")
+        locked_focus_source = str(sticky.get("locked_focus_source") or "")
+        is_confirmed_active = True
+        drift_warning = ""
+        prefer_locked_focus = False
+
+        if is_locked and (locked_url or locked_title or locked_focus_text):
+            fresh_url = str(browser.get("url") or "")
+            fresh_title = str(browser.get("title") or "")
+            if fresh_url and locked_url:
+                is_confirmed_active = _normalize_url(fresh_url) == _normalize_url(locked_url)
+                if not is_confirmed_active:
+                    drift_warning = f"focus_locked ({lock_reason})"
+            elif fresh_title and locked_title:
+                is_confirmed_active = _normalize_title(fresh_title) == _normalize_title(locked_title)
+                if not is_confirmed_active:
+                    drift_warning = f"focus_locked ({lock_reason})"
+            else:
+                drift_warning = f"focus_locked ({lock_reason})"
+                prefer_locked_focus = True
+
+            if not is_confirmed_active:
+                prefer_locked_focus = True
+                browser = dict(browser)
+                if locked_url:
+                    browser["url"] = locked_url
+                if locked_title:
+                    browser["title"] = locked_title
+
+        focus_source = "none"
+        focus_text = ""
+        for field, label in FOCUS_FIELDS:
+            value = _clean(browser.get(field))
+            if value:
+                focus_source = label
+                focus_text = value
+                break
+        if prefer_locked_focus and locked_focus_text:
+            focus_source = (
+                locked_focus_source
+                if locked_focus_source in SOURCE_LABELS
+                else focus_source
+            )
+            focus_text = locked_focus_text
+
+        confidence = _focus_confidence(
+            focus_source=focus_source,
+            browser_available=browser_available,
+            browser_fresh=browser_fresh,
+            in_browser_app=in_browser_app,
+        )
+        stale_reason = "ok"
+        if not browser_available:
+            stale_reason = browser.get("reason") or "browser_unavailable"
+        elif not browser_fresh:
+            stale_reason = "browser_snapshot_stale"
+        elif not in_browser_app:
+            stale_reason = "active_window_not_browser"
+
+        is_confirmed_active = bool(is_confirmed_active and browser_effective)
+        payload = {
+            "active_app": snap.get("active_app"),
+            "active_title": snap.get("active_title"),
+            "active_zone": active_zone,
+            "idle_state": snap.get("idle_state"),
+            "idle_seconds": snap.get("idle_seconds"),
+            "in_flow": bool(snap.get("in_flow")),
+            "time": snap.get("time") or {},
+            "browser_available": browser_available,
+            "browser_fresh": browser_fresh,
+            "browser_effective": browser_effective,
+            "browser_age_seconds": browser.get("age_seconds"),
+            "browser_stale_reason": stale_reason,
+            "browser": browser.get("browser"),
+            "browser_kind": browser.get("kind") or "unknown",
+            "browser_title": _clean(browser.get("title")),
+            "browser_url": _short(browser.get("url"), 220),
+            "browser_heading": _clean(browser.get("page_heading")),
+            "browser_meta_description": _clean(browser.get("meta_description")),
+            "browser_selected_text": _clean(browser.get("selected_text")),
+            "browser_social_post_text": _clean(browser.get("social_post_text")),
+            "browser_social_vibe": _clean(browser.get("social_vibe")),
+            "browser_local_summary": _clean(browser.get("local_summary")),
+            "browser_site_signals": browser.get("site_signals") or {},
+            "focus_source": focus_source,
+            "focus_text": _short(focus_text, 360),
+            "focus_confidence": confidence,
+            "is_confirmed_active": is_confirmed_active,
+            "drift_warning": drift_warning,
+            "is_sticky_locked": is_locked,
+            "lock_reason": lock_reason,
+            "router": build_awareness_router_packet(
+                focus_source=focus_source,
+                focus_text=focus_text,
+                confidence=confidence,
+                browser_available=browser_available,
+                browser_fresh=browser_fresh,
+                browser_effective=browser_effective,
+                stale_reason=stale_reason,
+                browser_kind=browser.get("kind") or "unknown",
+            ),
+            "awareness_mode": "read_only",
+            "can_act": False,
+        }
+        semantic = {
+            key: payload.get(key)
+            for key in (
+                "active_app",
+                "active_title",
+                "active_zone",
+                "idle_state",
+                "in_flow",
+                "browser_available",
+                "browser",
+                "browser_kind",
+                "browser_title",
+                "browser_url",
+                "browser_heading",
+                "browser_meta_description",
+                "browser_selected_text",
+                "browser_social_post_text",
+                "browser_social_vibe",
+                "browser_local_summary",
+                "focus_source",
+                "focus_text",
+                "is_sticky_locked",
+            )
+        }
+        result = SourceSnapshot(
+            source="live_awareness",
+            revision=_awareness_content_revision(semantic),
+            observed_at=browser_snapshot.observed_at,
+            captured_at=captured_at,
+            freshness=browser_snapshot.freshness,
+            payload=payload,
+        )
+    return result
 
 
 def build_awareness_router_packet(
@@ -677,6 +864,7 @@ def _normalize_vi(text: str | None) -> str:
 __all__ = [
     "build_awareness_router_packet",
     "build_live_awareness_snapshot",
+    "capture_live_awareness_source",
     "format_awareness_status",
     "format_live_awareness_prompt",
     "get_sticky_focus_state",

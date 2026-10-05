@@ -64,6 +64,7 @@ sys.modules["nana.config"] = _module(
     DEBUG_NO_TTS=True,
     ELEVEN_API_KEY="",
     ELEVEN_OUTPUT_FORMAT="mp3_44100_128",
+    ELEVEN_PUBLIC_TTS_MODEL="eleven_v4",
     MIC_DEVICE_INDEX=None,
     MIN_VOICE_SECONDS=0.25,
     PRIVATE_VOICE_OVERLAP_COALESCE_MS=150,
@@ -701,11 +702,13 @@ def test_adapter_latches_pre_engine_cancel_and_cleans_factory_failure():
 def test_public_engine_can_skip_private_worker_and_avatar_callback():
     from nana.voice.engine import VoiceEngine
 
+    assert "nana.runtime.avatar_mouth_stream" not in sys.modules
     engine = VoiceEngine(avatar_mouth_enabled=False, start_worker=False)
     try:
         assert engine.worker is None
         assert engine.avatar_mouth_stream is None
         assert engine.lipsync._pcm_level_callback is None
+        assert "nana.runtime.avatar_mouth_stream" not in sys.modules
     finally:
         engine.shutdown()
 

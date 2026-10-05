@@ -15,6 +15,7 @@ import math
 import os
 from pathlib import Path
 import sys
+import threading
 import time
 import types
 from typing import TYPE_CHECKING, Any, Callable, Mapping
@@ -51,6 +52,12 @@ PHASE = "STREAM-V1-VOICE-HOST-RUNNER"
 DEFAULT_MAX_TURNS = 1
 DEFAULT_MAX_POLLS = 40
 DEFAULT_TIMEOUT_SECONDS = 120.0
+PUBLIC_VISUAL_SIGNALS_ENV = "NANA_STREAM_PUBLIC_VISUAL_SIGNALS_ENABLED"
+_MAX_CONSECUTIVE_TRANSIENT_READ_RETRIES = 2
+_RETRYABLE_READ_REASONS = frozenset({
+    "youtube_transport_error",
+    "youtube_service_unavailable",
+})
 
 _VOICE_GATE_EXPECTATIONS = (
     ("NANA_STREAM_CUM0_ENABLED", True),
@@ -78,6 +85,13 @@ _GRACEFUL_STOP_REASONS = _BENIGN_STOP_REASONS | {
 
 def _enabled(name: str) -> bool:
     return str(os.getenv(name, "0")).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _public_visual_signals_enabled(environ: Mapping[str, str] | None = None) -> bool:
+    env = os.environ if environ is None else environ
+    return str(env.get(PUBLIC_VISUAL_SIGNALS_ENV, "0")).strip().lower() in {
+        "1", "true", "yes", "on"
+    }
 
 
 def _gate_snapshot() -> dict[str, bool]:
@@ -404,6 +418,7 @@ def run_bounded_voice_host(
         "dropped": 0,
     }
     statuses: list[str] = []
+    voice_host = None
 
     if control is not None:
         control.set_deadline(deadline, clock=monotonic_clock)
@@ -432,24 +447,27 @@ def run_bounded_voice_host(
             last_host_status=host_status,
             last_host_reason=host_reason,
         )
-        terminal_state = "stopped" if (
-            status == "completed" or reason in _GRACEFUL_STOP_REASONS
-        ) else "error"
-        if terminal_state == "stopped":
+        try:
+            terminal_state = "stopped" if (
+                status == "completed" or reason in _GRACEFUL_STOP_REASONS
+            ) else "error"
+            if terminal_state == "stopped":
+                _stage(
+                    control,
+                    "stopping",
+                    counts=counts,
+                    observed_counts=observed_counts,
+                    reason_code=reason,
+                )
             _stage(
                 control,
-                "stopping",
+                terminal_state,
                 counts=counts,
                 observed_counts=observed_counts,
                 reason_code=reason,
             )
-        _stage(
-            control,
-            terminal_state,
-            counts=counts,
-            observed_counts=observed_counts,
-            reason_code=reason,
-        )
+        finally:
+            _shutdown_voice_host(voice_host)
         return result
 
     try:
@@ -534,6 +552,7 @@ def run_bounded_voice_host(
     if page_token is None:
         page_token = _field(bootstrap_page, "next_page_token", None)
     next_poll_at = float(monotonic_clock()) + _provider_interval_seconds(page)
+    transient_read_failures = 0
     _stage(
         control,
         "waiting",
@@ -581,7 +600,27 @@ def run_bounded_voice_host(
         except KeyboardInterrupt:
             return finish("stopped", "keyboard_interrupt")
         except Exception as exc:
-            return finish("stopped", _read_failure_reason(exc, "chat_poll_failed"))
+            read_reason = _read_failure_reason(exc, "chat_poll_failed")
+            can_retry = (
+                read_reason in _RETRYABLE_READ_REASONS
+                and transient_read_failures < _MAX_CONSECUTIVE_TRANSIENT_READ_RETRIES
+                and counts["poll_requests"] < max_polls
+            )
+            if not can_retry:
+                return finish("stopped", read_reason)
+            transient_read_failures += 1
+            next_poll_at = (
+                float(monotonic_clock()) + _provider_interval_seconds(page)
+            )
+            _stage(
+                control,
+                "waiting",
+                counts=counts,
+                observed_counts=observed_counts,
+                reason_code="youtube_transport_retry",
+            )
+            continue
+        transient_read_failures = 0
         stop_reason = _requested_stop_reason(control)
         if stop_reason:
             return finish("stopped", stop_reason)
@@ -789,6 +828,61 @@ class _CountingOutputStream:
         return self._wrapped.write(frames)
 
 
+def _shutdown_voice_host(voice_host: Any) -> None:
+    shutdown = getattr(voice_host, "shutdown", None)
+    if callable(shutdown):
+        try:
+            shutdown()
+        except Exception:
+            pass
+
+
+class _PublicVisualRuntime:
+    def __init__(self, stream_session_id: str) -> None:
+        from nana.runtime.avatar_intent_gateway import PublicVisualSignalServer
+        from nana.runtime.stream_public_visual_signals import PublicVisualSignalStore
+
+        self.store = PublicVisualSignalStore(stream_session_id)
+        self._server = PublicVisualSignalServer(self.store)
+        self._lock = threading.RLock()
+        self._closed = False
+
+    def start(self) -> bool:
+        with self._lock:
+            if self._closed:
+                return False
+        return self._server.start() is True
+
+    def shutdown(self) -> None:
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+        try:
+            self.store.shutdown()
+        finally:
+            self._server.stop()
+
+
+class _ManagedVoiceHost:
+    def __init__(self, voice_host: Any, public_visual_runtime: Any) -> None:
+        self._voice_host = voice_host
+        self._public_visual_runtime = public_visual_runtime
+        self.host = voice_host.host
+        self.playback = voice_host.playback
+        self.control = voice_host.control
+        self._closed = False
+
+    def process_next(self, *, now: float):
+        return self._voice_host.process_next(now=now)
+
+    def shutdown(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        self._public_visual_runtime.shutdown()
+
+
 class _LiveRuntimeSetupError(RuntimeError):
     def __init__(self, reason_code: str) -> None:
         super().__init__(reason_code)
@@ -847,6 +941,7 @@ def _build_live_runtime(
     read_auth: str,
     observed_counts: dict[str, int],
     control: StreamSessionControl | None = None,
+    public_visual_runtime_factory: Callable[[str], Any] | None = None,
 ) -> tuple[Any, Callable[[str], Any]]:
     """Construct provider/audio owners only after CLI validation and gates."""
 
@@ -867,6 +962,12 @@ def _build_live_runtime(
     transport = YouTubeRestChatTransport(credentials)
     session_digest = sha256(video_id.encode("utf-8")).hexdigest()[:24]
     stream_session_id = f"youtube-voice-{session_digest}"
+    visual_runtime = None
+    if _public_visual_signals_enabled():
+        runtime_factory = public_visual_runtime_factory or _PublicVisualRuntime
+        visual_runtime = runtime_factory(stream_session_id)
+        if visual_runtime is None or getattr(visual_runtime, "store", None) is None:
+            raise _LiveRuntimeSetupError("public_visual_runtime_unavailable")
 
     def host_factory(live_chat_id: str):
         from nana.brain.llmgate_client import call_llmgate_messages
@@ -932,6 +1033,9 @@ def _build_live_runtime(
             port = VoiceEnginePublicPlaybackPort(
                 engine_factory=engine_factory,
                 output_stream_factory=output_stream_factory,
+                visual_signal_store=(
+                    None if visual_runtime is None else visual_runtime.store
+                ),
             )
             return SessionPlaybackPort(port, control) if control is not None else port
 
@@ -941,11 +1045,24 @@ def _build_live_runtime(
             active_session_id=stream_session_id,
             delivery_recorder=generator.delivery_recorder,
         )
-        return PublicVoiceHost(
+        voice_host = PublicVoiceHost(
             host=host,
             playback=_CountingPlaybackController(controller, observed_counts),
             control=control,
         )
+        if visual_runtime is None:
+            return voice_host
+        try:
+            started = visual_runtime.start() is True
+        except Exception:
+            started = False
+        if not started:
+            try:
+                visual_runtime.shutdown()
+            except Exception:
+                pass
+            raise _LiveRuntimeSetupError("public_visual_endpoint_unavailable")
+        return _ManagedVoiceHost(voice_host, visual_runtime)
 
     return transport, host_factory
 

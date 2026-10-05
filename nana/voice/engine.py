@@ -30,6 +30,7 @@ from nana.config import (
     DEBUG_NO_TTS,
     ELEVEN_API_KEY,
     ELEVEN_OUTPUT_FORMAT,
+    ELEVEN_PUBLIC_TTS_MODEL,
     MIC_DEVICE_INDEX,
     MIN_VOICE_SECONDS,
     PRIVATE_VOICE_OVERLAP_COALESCE_MS,
@@ -71,7 +72,6 @@ from nana.config import (
     VOICE_TEST_MODE,
 )
 from nana.runtime.logger import log_event
-from nana.runtime.avatar_mouth_stream import get_avatar_mouth_stream
 from nana.runtime.private_voice_overlap import (
     OverlapCommitRequest,
     OverlapQueueItem,
@@ -81,6 +81,12 @@ from nana.runtime.private_voice_ttd import (
     TtdCommitRequest,
     TtdFinalPayload,
     TtdQueueItem,
+)
+from nana.runtime.private_voice_receipts import (
+    PrivateVoiceContext,
+    PrivateVoiceReceiptBinding,
+    PrivateVoiceReceiptLedger,
+    ReceiptLedgerFull,
 )
 from nana.voice.inline_audio_tags import (
     INLINE_AUDIO_TAG_MAX,
@@ -157,7 +163,8 @@ VOICE_FULL_SINGLE_REQUEST_ENABLED = os.getenv("NANA_VOICE_FULL_SINGLE_REQUEST_EN
     "off",
     "no",
 }
-# Official eleven_v3 limit is 5,000 characters per TTS request. Keep a
+# Public ElevenLabs models used here support up to 5,000 characters per TTS
+# request. Keep a conservative margin for provider-side text normalization.
 # conservative margin for provider-side text normalization.
 # https://elevenlabs.io/docs/overview/models#character-limits
 ELEVENLABS_SINGLE_REQUEST_MAX_CHARS = _bounded_env_int(
@@ -406,6 +413,8 @@ class VoiceQueueItem:
     text: str
     voice_mode: str = "chat"
     ticket: int = 0
+    receipt_context: PrivateVoiceContext | None = None
+    receipt_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -509,16 +518,24 @@ def _prepare_tts_text(text):
 
 
 class VoiceEngine:
-    def __init__(self, *, avatar_mouth_enabled=True, start_worker=True):
+    def __init__(
+        self,
+        *,
+        avatar_mouth_enabled=True,
+        start_worker=True,
+        private_voice_receipt_ledger: PrivateVoiceReceiptLedger | None = None,
+    ):
         self.recognizer = sr.Recognizer()
         self._recognizer_lock = threading.Lock()
         self.recognizer.energy_threshold = 300
         self.recognizer.dynamic_energy_threshold = True
         self.noise_calibrated = False
         self.lipsync = LipsyncManager()
-        self.avatar_mouth_stream = (
-            get_avatar_mouth_stream() if avatar_mouth_enabled else None
-        )
+        self.avatar_mouth_stream = None
+        if avatar_mouth_enabled:
+            from nana.runtime.avatar_mouth_stream import get_avatar_mouth_stream
+
+            self.avatar_mouth_stream = get_avatar_mouth_stream()
         if self.avatar_mouth_stream is not None:
             self.lipsync.set_pcm_level_callback(
                 self.avatar_mouth_stream.publish_pcm_level
@@ -527,6 +544,8 @@ class VoiceEngine:
         self._voice_completion = threading.Condition()
         self._voice_enqueued_ticket = 0
         self._voice_completed_ticket = 0
+        self._private_voice_receipt_ledger = private_voice_receipt_ledger
+        self._private_avatar_signals = None
         # Global ceiling on ElevenLabs calls in flight — guards against
         # concurrent_limit_exceeded (subscription caps at 5).
         self._tts_semaphore = threading.BoundedSemaphore(ELEVENLABS_MAX_CONCURRENT)
@@ -917,14 +936,193 @@ class VoiceEngine:
             prepared += " "
         return prepared
 
-    def say(self, text, *, voice_mode=None):
+    def set_private_voice_receipt_ledger(self, ledger=None):
+        """Install or clear the optional per-ticket private receipt ledger."""
+
+        if ledger is not None and not isinstance(ledger, PrivateVoiceReceiptLedger):
+            raise TypeError("ledger must be PrivateVoiceReceiptLedger or None")
+        self._private_voice_receipt_ledger = ledger
+
+    def set_private_avatar_signals(self, signals=None):
+        """Install or clear the optional receipt-bound private avatar sink."""
+
+        if signals is not None and not callable(
+            getattr(signals, "publish_pcm_level", None)
+        ):
+            raise TypeError("signals must expose publish_pcm_level or be None")
+        self._private_avatar_signals = signals
+
+    def _receipt_binding_for_item(self, item):
+        context = getattr(item, "receipt_context", None)
+        receipt_id = getattr(item, "receipt_id", None)
+        ledger = getattr(self, "_private_voice_receipt_ledger", None)
+        ticket = self._voice_item_ticket(item)
+        if (
+            not isinstance(context, PrivateVoiceContext)
+            or not isinstance(receipt_id, str)
+            or not isinstance(ledger, PrivateVoiceReceiptLedger)
+            or ticket < 1
+        ):
+            return None
+        return PrivateVoiceReceiptBinding(
+            receipt_context=context,
+            receipt_id=receipt_id,
+            receipt_ledger=ledger,
+            ticket=ticket,
+        )
+
+    def _receipt_first_audio(self, binding) -> bool:
+        if binding is None:
+            return False
+        try:
+            return bool(
+                binding.receipt_ledger.first_audio(
+                    binding.receipt_id,
+                    engine_ticket=int(binding.ticket),
+                    context=binding.receipt_context,
+                )
+            )
+        except Exception:
+            return False
+
+    def _private_pcm_receipt_options(self, binding):
+        if binding is None:
+            return {}
+        options = {'on_first_audio': lambda: self._receipt_first_audio(binding)}
+        on_pcm_level = self._private_avatar_pcm_callback(binding)
+        if on_pcm_level is not None:
+            options['on_pcm_level'] = on_pcm_level
+        return options
+
+    def _private_avatar_pcm_callback(self, binding):
+        signals = getattr(self, "_private_avatar_signals", None)
+        publish = getattr(signals, "publish_pcm_level", None)
+        if binding is None or not callable(publish):
+            return None
+
+        def on_pcm_level(level, _binding=binding, _publish=publish):
+            try:
+                _publish(_binding, level)
+            except Exception:
+                # Private avatar observation must never affect audio delivery.
+                pass
+
+        return on_pcm_level
+
+    def _private_prepared_playback(self, prepared, binding):
+        """Observe exact sink writes, retaining the existing bounded watchdog."""
+        done = threading.Event()
+        result = [None]
+        on_pcm_level = self._private_avatar_pcm_callback(binding)
+        def first(_bytes):
+            self._receipt_first_audio(binding)
+            return True  # Observation must never cancel lead/tail playback.
+        def play():
+            try:
+                options = {'on_first_audio': first}
+                if on_pcm_level is not None:
+                    options['on_pcm_level'] = on_pcm_level
+                result[0] = self.lipsync.play_prepared_audio_receipted(
+                    prepared,
+                    **options,
+                )
+            except Exception:
+                pass
+            finally:
+                done.set()
+        threading.Thread(target=play, daemon=True, name='private-receipted-audio').start()
+        duration = getattr(prepared, 'duration_seconds', 0)
+        limit = (duration + VOICE_PLAYBACK_GRACE_S if isinstance(duration, (float, int))
+                 and math.isfinite(duration) and duration > 0 else VOICE_PLAYBACK_FALLBACK_TIMEOUT_S)
+        deadline = time.monotonic() + max(1., limit)
+        while not done.wait(.05):
+            if self._shutdown_requested() or time.monotonic() >= deadline:
+                self.lipsync.stop()
+                binding.stop_confirmed = False
+                return None
+        binding.stop_confirmed = binding.stop_confirmed and bool(getattr(result[0], 'stop_confirmed', False))
+        return result[0]
+
+    def _receipt_completion(self, binding, completion) -> bool:
+        """Map an audio result to a receipt without inferring delivery."""
+
+        if binding is None:
+            return False
+        ledger = binding.receipt_ledger
+        try:
+            if completion is None:
+                return bool(
+                    ledger.unknown(
+                        binding.receipt_id,
+                        engine_ticket=int(binding.ticket),
+                        context=binding.receipt_context,
+                        reason_code="unknown_outcome",
+                    )
+                )
+            audio_completed = getattr(completion, "audio_completed", None)
+            if audio_completed is True and getattr(completion, 'stop_confirmed', False) is True and getattr(binding, 'stop_confirmed', True):
+                if ledger.complete(
+                    binding.receipt_id,
+                    engine_ticket=int(binding.ticket),
+                    context=binding.receipt_context,
+                    completed=True,
+                ):
+                    return True
+                # A completed result without a first-audio callback is not
+                # delivery evidence. Close it as unknown instead.
+                ledger.unknown(
+                    binding.receipt_id,
+                    engine_ticket=int(binding.ticket),
+                    context=binding.receipt_context,
+                    reason_code="first_audio_unproven",
+                )
+                return False
+            stop_confirmed = bool(
+                getattr(completion, "stop_confirmed", binding.stop_confirmed)
+            ) and bool(binding.stop_confirmed)
+            if not stop_confirmed:
+                return bool(
+                    ledger.unknown(
+                        binding.receipt_id,
+                        engine_ticket=int(binding.ticket),
+                        context=binding.receipt_context,
+                        reason_code="stop_unconfirmed",
+                    )
+                )
+            return bool(
+                ledger.complete(
+                    binding.receipt_id,
+                    engine_ticket=int(binding.ticket),
+                    context=binding.receipt_context,
+                    completed=False,
+                    reason_code=str(getattr(completion, "abort_reason", "voice_failed") or "voice_failed"),
+                )
+            )
+        except Exception:
+            return False
+
+    def say(self, text, *, voice_mode=None, receipt_context=None):
         if not text or not text.strip():
             return 0
+        if receipt_context is not None and not isinstance(receipt_context, PrivateVoiceContext):
+            raise TypeError("receipt_context must be PrivateVoiceContext or None")
         ticket = self._next_voice_ticket()
+        ledger = getattr(self, "_private_voice_receipt_ledger", None)
+        receipt_id = None
+        if receipt_context is not None and isinstance(ledger, PrivateVoiceReceiptLedger):
+            try:
+                receipt_id = ledger.queued(receipt_context, engine_ticket=ticket).receipt_id
+            except ReceiptLedgerFull:
+                self._increment_state("dropped_total")
+                self._mark_voice_ticket_completed(ticket)
+                log_event("voice", "Private voice receipt ledger full; voice admission failed")
+                return 0
         item = VoiceQueueItem(
             str(text),
             self._normalize_voice_mode(voice_mode),
             ticket,
+            receipt_context,
+            receipt_id,
         )
         # Blocking put with a long timeout — acts as backpressure so the
         # queue keeps acting as a steady-state pre-roll buffer (≈5 chunks)
@@ -942,6 +1140,13 @@ class VoiceEngine:
                     self._increment_state("dropped_total")
                     log_event("voice", f"Voice queue wedged >30s, dropping chunk: {text[:80]}")
                     print(f"🔇 Voice queue đầy quá lâu, bỏ chunk mới: {text[:60]}")
+                    if receipt_id is not None and isinstance(ledger, PrivateVoiceReceiptLedger):
+                        ledger.unknown(
+                            receipt_id,
+                            engine_ticket=ticket,
+                            context=receipt_context,
+                            reason_code="queue_full",
+                        )
                     self._mark_voice_ticket_completed(ticket)
                     return ticket
                 # worker still hasn't freed a slot — keep waiting
@@ -1076,6 +1281,17 @@ class VoiceEngine:
             self.record_private_ttd_bypass(reason)
             return 0
         ticket = self._next_voice_ticket()
+        ledger = getattr(self, "_private_voice_receipt_ledger", None)
+        receipt_context = getattr(request, "receipt_context", None)
+        receipt_id = None
+        if receipt_context is not None and isinstance(ledger, PrivateVoiceReceiptLedger):
+            try:
+                receipt_id = ledger.queued(receipt_context, engine_ticket=ticket).receipt_id
+            except ReceiptLedgerFull:
+                self._increment_state("dropped_total")
+                self._mark_voice_ticket_completed(ticket)
+                self.record_private_ttd_bypass("receipt_ledger_full")
+                return 0
         item = TtdQueueItem(
             turn_id=request.turn_id,
             text_queue=request.text_queue,
@@ -1085,11 +1301,20 @@ class VoiceEngine:
             committed_at=request.committed_at,
             voice_mode=self._normalize_voice_mode(voice_mode),
             ticket=ticket,
+            receipt_context=receipt_context,
+            receipt_id=receipt_id,
         )
         try:
             self.voice_queue.put_nowait(item)
         except queue.Full:
             self._increment_state("dropped_total")
+            if receipt_id is not None and isinstance(ledger, PrivateVoiceReceiptLedger):
+                ledger.unknown(
+                    receipt_id,
+                    engine_ticket=ticket,
+                    context=receipt_context,
+                    reason_code="queue_full",
+                )
             self._mark_voice_ticket_completed(ticket)
             self.record_private_ttd_bypass("queue_race_full")
             return 0
@@ -1118,6 +1343,17 @@ class VoiceEngine:
             self.record_private_overlap_bypass(reason)
             return 0
         ticket = self._next_voice_ticket()
+        ledger = getattr(self, "_private_voice_receipt_ledger", None)
+        receipt_context = getattr(request, "receipt_context", None)
+        receipt_id = None
+        if receipt_context is not None and isinstance(ledger, PrivateVoiceReceiptLedger):
+            try:
+                receipt_id = ledger.queued(receipt_context, engine_ticket=ticket).receipt_id
+            except ReceiptLedgerFull:
+                self._increment_state("dropped_total")
+                self._mark_voice_ticket_completed(ticket)
+                self.record_private_overlap_bypass("receipt_ledger_full")
+                return 0
         item = OverlapQueueItem(
             turn_id=request.turn_id,
             lead_text=request.lead_text,
@@ -1128,11 +1364,20 @@ class VoiceEngine:
             lead_committed_at=request.lead_committed_at,
             voice_mode=self._normalize_voice_mode(voice_mode),
             ticket=ticket,
+            receipt_context=receipt_context,
+            receipt_id=receipt_id,
         )
         try:
             self.voice_queue.put_nowait(item)
         except queue.Full:
             self._increment_state("dropped_total")
+            if receipt_id is not None and isinstance(ledger, PrivateVoiceReceiptLedger):
+                ledger.unknown(
+                    receipt_id,
+                    engine_ticket=ticket,
+                    context=receipt_context,
+                    reason_code="queue_full",
+                )
             self._mark_voice_ticket_completed(ticket)
             self.record_private_overlap_bypass("queue_race_full")
             return 0
@@ -1581,8 +1826,9 @@ class VoiceEngine:
             )
 
     def _voice_worker(self):
+        pending = []
         while True:
-            item = self.voice_queue.get()
+            item = pending.pop() if pending else self.voice_queue.get()
             if item is None:
                 self.voice_queue.task_done()
                 break
@@ -1601,13 +1847,16 @@ class VoiceEngine:
                     self.voice_queue.task_done()
                 continue
             text, voice_mode = self._unpack_voice_item(item)
+            receipt_binding = self._receipt_binding_for_item(item)
             consumed_items = 1
             completed_ticket = self._voice_item_ticket(item)
             # Briefly wait to coalesce short flushed chunks into one TTS call.
             # The LLM streaming pushes many short voice.say() calls — without
             # this wait each one is its own ElevenLabs roundtrip, leaving a
             # ~1s gap between voice chunks.
-            if len(text) < 200:
+            # A private web turn maps one engine ticket to one receipt. Do not
+            # coalesce it with an adjacent public/terminal queue item.
+            if receipt_binding is None and len(text) < 200:
                 deadline = time.time() + 0.15
                 while time.time() < deadline:
                     try:
@@ -1617,6 +1866,9 @@ class VoiceEngine:
                     if extra is None:
                         self.voice_queue.task_done()
                         self.voice_queue.put(None)  # re-arm sentinel
+                        break
+                    if isinstance(extra, (OverlapQueueItem, TtdQueueItem)) or getattr(extra, 'receipt_context', None) is not None:
+                        pending.append(extra)
                         break
                     consumed_items += 1
                     completed_ticket = max(
@@ -1628,6 +1880,7 @@ class VoiceEngine:
                         text = text.rstrip() + " " + extra_text.strip()
                         if voice_mode == "chat" and extra_mode != "chat":
                             voice_mode = extra_mode
+            completion = None
             try:
                 self._update_state(
                     status="talking",
@@ -1637,7 +1890,11 @@ class VoiceEngine:
                 )
                 presence_outputs = self._presence_pcm_outputs_if_available()
                 if presence_outputs is None:
-                    completion = self._tts_and_lipsync(text, voice_mode=voice_mode)
+                    completion = self._tts_and_lipsync(
+                        text,
+                        voice_mode=voice_mode,
+                        **({'receipt_binding': receipt_binding} if receipt_binding is not None else {}),
+                    )
                 else:
                     presence_playback, presence_stream_playback = presence_outputs
                     completion = self._tts_to_presence_pcm(
@@ -1645,6 +1902,7 @@ class VoiceEngine:
                         voice_mode=voice_mode,
                         playback_fn=presence_playback,
                         stream_playback_fn=presence_stream_playback,
+                        receipt_binding=receipt_binding,
                     )
                 if completion is not None and not completion.audio_completed:
                     log_event(
@@ -1657,6 +1915,10 @@ class VoiceEngine:
                 log_event("voice", f"Voice worker failed: {type(exc).__name__}: {exc}")
                 self._update_state(last_error=f"{type(exc).__name__}: {exc}")
             finally:
+                if receipt_binding is not None:
+                    # The mapping is idempotent; a route that already emitted a
+                    # terminal receipt is harmlessly ignored here.
+                    self._receipt_completion(receipt_binding, completion)
                 self._update_state(
                     status="shutdown" if self._shutdown_requested() else "idle",
                     speaking=False,
@@ -1676,10 +1938,11 @@ class VoiceEngine:
             last_private_voice_ttd_reason="opening_socket",
         )
         completion = None
+        receipt_binding = self._receipt_binding_for_item(item)
         try:
             presence_outputs = self._presence_pcm_outputs_if_available()
             if presence_outputs is None:
-                completion = self._tts_ttd_completion(item)
+                completion = self._tts_ttd_completion(item, receipt_binding=receipt_binding)
             else:
                 payload = self._wait_ttd_final_payload(item)
                 presence_playback, presence_stream_playback = presence_outputs
@@ -1688,6 +1951,7 @@ class VoiceEngine:
                     voice_mode=item.voice_mode,
                     playback_fn=presence_playback,
                     stream_playback_fn=presence_stream_playback,
+                    receipt_binding=receipt_binding,
                 )
                 self._increment_state("private_voice_ttd_bypassed_total")
                 self._update_state(
@@ -1714,6 +1978,8 @@ class VoiceEngine:
                 f"Private TTD worker failed: {type(exc).__name__}: {exc}",
             )
         finally:
+            if receipt_binding is not None:
+                self._receipt_completion(receipt_binding, completion)
             self._update_state(
                 status="shutdown" if self._shutdown_requested() else "idle",
                 speaking=False,
@@ -1730,10 +1996,11 @@ class VoiceEngine:
             last_private_voice_overlap_reason="lead_fetch",
         )
         completion = None
+        receipt_binding = self._receipt_binding_for_item(item)
         try:
             presence_outputs = self._presence_pcm_outputs_if_available()
             if presence_outputs is None:
-                completion = self._tts_overlap_completion(item)
+                completion = self._tts_overlap_completion(item, receipt_binding=receipt_binding)
             else:
                 payload = self._wait_overlap_tail_payload(item)
                 presence_playback, presence_stream_playback = presence_outputs
@@ -1742,6 +2009,7 @@ class VoiceEngine:
                     voice_mode=item.voice_mode,
                     playback_fn=presence_playback,
                     stream_playback_fn=presence_stream_playback,
+                    receipt_binding=receipt_binding,
                 )
                 self._increment_state("private_voice_overlap_bypassed_total")
                 self._update_state(
@@ -1768,6 +2036,8 @@ class VoiceEngine:
                 f"Private overlap worker failed: {type(exc).__name__}: {exc}",
             )
         finally:
+            if receipt_binding is not None:
+                self._receipt_completion(receipt_binding, completion)
             self._update_state(
                 status="shutdown" if self._shutdown_requested() else "idle",
                 speaking=False,
@@ -2384,6 +2654,7 @@ class VoiceEngine:
         voice_mode,
         playback_fn,
         stream_playback_fn=None,
+        receipt_binding=None,
     ):
         """Render ElevenLabs PCM and drain it on one LAN node.
 
@@ -2637,7 +2908,7 @@ class VoiceEngine:
 
     @staticmethod
     def _voice_item_ticket(item):
-        if isinstance(item, VoiceQueueItem):
+        if isinstance(item, (VoiceQueueItem, OverlapQueueItem, TtdQueueItem)):
             return int(item.ticket or 0)
         return 0
 
@@ -2856,7 +3127,16 @@ class VoiceEngine:
             last_stream_ffmpeg_ready=bool(ffmpeg_ready),
         )
 
-    def _tts_http_streaming_completion(self, text, profile, voice_mode, process, *, original_chars=None):
+    def _tts_http_streaming_completion(
+        self,
+        text,
+        profile,
+        voice_mode,
+        process,
+        *,
+        original_chars=None,
+        receipt_binding=None,
+    ):
         """Stream one provider response through one FFmpeg and OutputStream."""
         started_at = time.perf_counter()
         raw_text = str(text or "")
@@ -3165,6 +3445,7 @@ class VoiceEngine:
                     on_done=_on_playback_done,
                     output_stream_factory=getattr(self, "_stream_output_stream_factory", None),
                     callback_output=VOICE_STREAM_CALLBACK_OUTPUT_ENABLED,
+                    **self._private_pcm_receipt_options(receipt_binding),
                 )
         else:
             with shutdown_lock:
@@ -3180,6 +3461,7 @@ class VoiceEngine:
                         on_done=_on_playback_done,
                         output_stream_factory=getattr(self, "_stream_output_stream_factory", None),
                         callback_output=VOICE_STREAM_CALLBACK_OUTPUT_ENABLED,
+                        **self._private_pcm_receipt_options(receipt_binding),
                     )
 
         if can_start_playback:
@@ -3386,6 +3668,9 @@ class VoiceEngine:
             original_chars=original_chars,
             played_duration_ms=played_duration_ms,
             abort_reason=abort_reason,
+            stop_confirmed=(
+                True if receipt_binding is None else playback_done.is_set()
+            ),
         )
         self._record_audio_completion(result)
         if not completed:
@@ -3894,7 +4179,7 @@ class VoiceEngine:
                     except asyncio.CancelledError:
                         pass
 
-    def _tts_ttd_completion(self, item):
+    def _tts_ttd_completion(self, item, *, receipt_binding=None):
         started_at = time.perf_counter()
         sample_rate = _pcm_sample_rate(PRIVATE_VOICE_TTD_OUTPUT_FORMAT)
         if sample_rate <= 0:
@@ -4021,6 +4306,7 @@ class VoiceEngine:
             on_done=_on_done,
             output_stream_factory=getattr(self, "_stream_output_stream_factory", None),
             callback_output=True,
+            **self._private_pcm_receipt_options(receipt_binding),
         )
 
         transport_error = None
@@ -4141,7 +4427,7 @@ class VoiceEngine:
             and provider_integrity_ok
         )
 
-        if transport_error is not None and first_audio_at is None:
+        if transport_error is not None and first_audio_at is None and playback_done.is_set():
             try:
                 payload = self._wait_ttd_final_payload(item)
             except Exception:
@@ -4159,6 +4445,7 @@ class VoiceEngine:
                 return self._tts_and_lipsync(
                     payload.full_text,
                     voice_mode=item.voice_mode,
+                    receipt_binding=receipt_binding,
                 )
 
         if completed:
@@ -4346,6 +4633,9 @@ class VoiceEngine:
             original_chars=len(full_text),
             played_duration_ms=played_duration_ms,
             abort_reason=str(abort_reason),
+            stop_confirmed=(
+                receipt_binding is None or playback_done.is_set()
+            ),
         )
         return self._record_audio_completion(result)
 
@@ -4377,7 +4667,7 @@ class VoiceEngine:
             raise ValueError("overlap_exact_join_failed")
         return payload
 
-    def _play_overlap_audio(self, item, audio, *, role):
+    def _play_overlap_audio(self, item, audio, *, role, receipt_binding=None):
         prepared = self.lipsync.prepare_audio_bytes(audio)
         if prepared is None:
             return False, 0.0, None, "decode_error"
@@ -4409,7 +4699,22 @@ class VoiceEngine:
                 last_private_voice_overlap_status="lead_playing",
                 last_private_voice_overlap_reason="lead_audio_started",
             )
-        self.lipsync.play_prepared_audio_nonblocking(prepared, on_done=_on_done)
+        if receipt_binding is not None:
+            try:
+                playback_result = self._private_prepared_playback(prepared, receipt_binding)
+                playback_success["value"] = bool(
+                    getattr(playback_result, "completed", False)
+                )
+                receipt_binding.stop_confirmed = (
+                    receipt_binding.stop_confirmed
+                    and bool(getattr(playback_result, "stop_confirmed", True))
+                )
+            except Exception:
+                receipt_binding.stop_confirmed = False
+                playback_success["value"] = False
+            done.set()
+        else:
+            self.lipsync.play_prepared_audio_nonblocking(prepared, on_done=_on_done)
         deadline = time.perf_counter() + timeout_s
         while not done.is_set():
             if item.cancel_event.is_set() or self._shutdown_requested():
@@ -4427,7 +4732,7 @@ class VoiceEngine:
             return False, duration_ms, ended_at, "playback_error"
         return True, duration_ms, ended_at, "none"
 
-    def _tts_overlap_streaming_lead_completion(self, item, process):
+    def _tts_overlap_streaming_lead_completion(self, item, process, *, receipt_binding=None):
         """Stream the lead while provider-prefetching ordered tail packets."""
 
         started_at = time.perf_counter()
@@ -4566,13 +4871,23 @@ class VoiceEngine:
                 item, lead_stream_started_at
             )
         )
-        lead_result = self._tts_http_streaming_completion(
-            lead_text,
-            lead_profile,
-            item.voice_mode,
-            process,
-            original_chars=len(lead_text),
-        )
+        if receipt_binding is None:
+            lead_result = self._tts_http_streaming_completion(
+                lead_text,
+                lead_profile,
+                item.voice_mode,
+                process,
+                original_chars=len(lead_text),
+            )
+        else:
+            lead_result = self._tts_http_streaming_completion(
+                lead_text,
+                lead_profile,
+                item.voice_mode,
+                process,
+                original_chars=len(lead_text),
+                receipt_binding=receipt_binding,
+            )
         lead_ended_at = time.perf_counter()
         with self.state_lock:
             stream_first_byte_ms = self.state.get(
@@ -4702,6 +5017,7 @@ class VoiceEngine:
                     item,
                     audio,
                     role="tail",
+                    receipt_binding=receipt_binding,
                 )
             )
             if not tail_ok:
@@ -4930,6 +5246,7 @@ class VoiceEngine:
         voice_mode,
         *,
         original_chars=None,
+        receipt_binding=None,
     ):
         """Stream one complete HTTP PCM response through one callback."""
 
@@ -5046,6 +5363,7 @@ class VoiceEngine:
                 self, "_stream_output_stream_factory", None
             ),
             callback_output=True,
+            **self._private_pcm_receipt_options(receipt_binding),
         )
 
         transport_error = None
@@ -5094,6 +5412,7 @@ class VoiceEngine:
         if (
             not completed
             and first_audio_at is None
+            and playback_done.is_set()
             and not self._shutdown_requested()
         ):
             self._increment_state("private_voice_overlap_pcm_fallback_total")
@@ -5264,10 +5583,11 @@ class VoiceEngine:
             original_chars=original_chars,
             played_duration_ms=played_duration_ms,
             abort_reason=abort_reason,
+            stop_confirmed=receipt_binding is None or playback_done.is_set(),
         )
         return self._record_audio_completion(result)
 
-    def _tts_overlap_pcm_completion(self, item):
+    def _tts_overlap_pcm_completion(self, item, *, receipt_binding=None):
         """Play HTTP lead and prefetched tail PCM through one callback."""
 
         sample_rate = _pcm_sample_rate(PRIVATE_VOICE_OVERLAP_PCM_OUTPUT_FORMAT)
@@ -5515,6 +5835,7 @@ class VoiceEngine:
                 self, "_stream_output_stream_factory", None
             ),
             callback_output=True,
+            **self._private_pcm_receipt_options(receipt_binding),
         )
 
         lead_error = None
@@ -5628,6 +5949,7 @@ class VoiceEngine:
         if (
             not playback_completed
             and first_audio_at is None
+            and playback_done.is_set()
             and not item.cancel_event.is_set()
             and not self._shutdown_requested()
         ):
@@ -5894,12 +6216,23 @@ class VoiceEngine:
             original_chars=len(full_text),
             played_duration_ms=played_duration_ms,
             abort_reason=abort_reason,
+            stop_confirmed=(
+                True
+                if receipt_binding is None
+                else playback_done.is_set()
+            ),
         )
         return self._record_audio_completion(result)
 
-    def _tts_overlap_completion(self, item):
+    def _tts_overlap_completion(self, item, *, receipt_binding=None):
         if self._private_overlap_pcm_route_available():
-            pcm_result = self._tts_overlap_pcm_completion(item)
+            if receipt_binding is None:
+                pcm_result = self._tts_overlap_pcm_completion(item)
+            else:
+                pcm_result = self._tts_overlap_pcm_completion(
+                    item,
+                    receipt_binding=receipt_binding,
+                )
             if pcm_result is not None:
                 return pcm_result
             self._update_state(
@@ -5914,7 +6247,13 @@ class VoiceEngine:
             else None
         )
         if process is not None:
-            return self._tts_overlap_streaming_lead_completion(item, process)
+            if receipt_binding is None:
+                return self._tts_overlap_streaming_lead_completion(item, process)
+            return self._tts_overlap_streaming_lead_completion(
+                item,
+                process,
+                receipt_binding=receipt_binding,
+            )
         self._update_state(
             last_private_voice_overlap_reason="buffered_lead_fallback",
         )
@@ -6094,7 +6433,12 @@ class VoiceEngine:
         tail_thread.start()
 
         lead_ok, lead_duration_ms, lead_ended_at, lead_error = (
-            self._play_overlap_audio(item, lead_audio, role="lead")
+            self._play_overlap_audio(
+                item,
+                lead_audio,
+                role="lead",
+                receipt_binding=receipt_binding,
+            )
         )
         if lead_ended_at is not None:
             self._update_state(
@@ -6222,6 +6566,7 @@ class VoiceEngine:
                     item,
                     tail_audio[index],
                     role="tail",
+                    receipt_binding=receipt_binding,
                 )
             )
             if not tail_ok:
@@ -6296,7 +6641,15 @@ class VoiceEngine:
         )
         return self._record_audio_completion(result)
 
-    def _tts_full_provider_completion(self, text, profile, voice_mode, *, original_chars=None):
+    def _tts_full_provider_completion(
+        self,
+        text,
+        profile,
+        voice_mode,
+        *,
+        original_chars=None,
+        receipt_binding=None,
+    ):
         """Provider-sized full voice with explicit fetch/playback completion."""
         started_at = time.perf_counter()
         original_chars = len(str(text or "")) if original_chars is None else max(0, int(original_chars))
@@ -6487,7 +6840,27 @@ class VoiceEngine:
                 )
                 play_started = time.perf_counter()
                 shutdown_lock = getattr(self, "_shutdown_lock", None)
-                if shutdown_lock is None:
+                if receipt_binding is not None:
+                    if self._shutdown_requested():
+                        abort_state = "cancelled"
+                        abort_reason = "shutdown_cancelled"
+                        break
+                    try:
+                        playback_result = self._private_prepared_playback(prepared, receipt_binding)
+                        playback_success["value"] = bool(
+                            getattr(playback_result, "completed", False)
+                        )
+                        binding_stop_confirmed = bool(
+                            getattr(playback_result, "stop_confirmed", True)
+                        )
+                        receipt_binding.stop_confirmed = (
+                            receipt_binding.stop_confirmed and binding_stop_confirmed
+                        )
+                    except Exception:
+                        receipt_binding.stop_confirmed = False
+                        playback_success["value"] = False
+                    playback_done.set()
+                elif shutdown_lock is None:
                     if self._shutdown_requested():
                         abort_state = "cancelled"
                         abort_reason = "shutdown_cancelled"
@@ -6571,6 +6944,11 @@ class VoiceEngine:
                 original_chars=original_chars,
                 played_duration_ms=played_duration_ms,
                 abort_reason=abort_reason,
+                stop_confirmed=(
+                    True
+                    if receipt_binding is None
+                    else bool(receipt_binding.stop_confirmed)
+                ),
             )
             self._record_audio_completion(result)
             if not result.audio_completed:
@@ -6592,6 +6970,11 @@ class VoiceEngine:
                 original_chars=original_chars,
                 played_duration_ms=played_duration_ms,
                 abort_reason="internal_error",
+                stop_confirmed=(
+                    True
+                    if receipt_binding is None
+                    else bool(receipt_binding.stop_confirmed)
+                ),
             )
             self._record_audio_completion(result)
             print(
@@ -6601,7 +6984,7 @@ class VoiceEngine:
             )
             return result
 
-    def _tts_and_lipsync(self, text, voice_mode="chat"):
+    def _tts_and_lipsync(self, text, voice_mode="chat", *, receipt_binding=None):
         """TTS + playback with explicit audio-completion truth.
 
         Pipeline:
@@ -6652,6 +7035,7 @@ class VoiceEngine:
             tone = _detect_tone_from_text(text)
             profile = VOICE_TONE_PROFILES.get(tone, VOICE_TONE_PROFILES["default"])
 
+            receipt_options = {'receipt_binding': receipt_binding} if receipt_binding is not None else {}
             if full_voice and VOICE_FULL_SINGLE_REQUEST_ENABLED:
                 if (
                     self._private_overlap_pcm_route_available()
@@ -6662,6 +7046,7 @@ class VoiceEngine:
                         profile,
                         voice_mode,
                         original_chars=source_original_chars,
+                        **receipt_options,
                     )
                     if pcm_result is not None:
                         return pcm_result
@@ -6691,6 +7076,7 @@ class VoiceEngine:
                             voice_mode,
                             process,
                             original_chars=source_original_chars,
+                            **receipt_options,
                         )
 
                     # Preflight happens before the provider request, so this is
@@ -6705,6 +7091,7 @@ class VoiceEngine:
                     profile,
                     voice_mode,
                     original_chars=source_original_chars,
+                    **receipt_options,
                 )
 
             chunks = self._split_tts_text(text, max_chars=chunk_limit)
@@ -6759,7 +7146,29 @@ class VoiceEngine:
                     log_event("voice", f"TTS sequencer: seam wait before chunk {idx}: {seam_wait:.1f}ms")
                 playback_done.clear()
                 play_started = time.perf_counter()
-                self.lipsync.play_audio_nonblocking(audio, on_done=_on_chunk_done)
+                if receipt_binding is not None:
+                    prepared = self.lipsync.prepare_audio_bytes(audio)
+                    if prepared is None:
+                        receipt_binding.stop_confirmed = False
+                        playback_done.set()
+                    else:
+                        try:
+                            playback_result = self._private_prepared_playback(prepared, receipt_binding)
+                            receipt_binding.stop_confirmed = (
+                                receipt_binding.stop_confirmed
+                                and bool(getattr(playback_result, "stop_confirmed", True))
+                            )
+                            playback_success = {
+                                "value": bool(getattr(playback_result, "completed", False))
+                            }
+                        except Exception:
+                            receipt_binding.stop_confirmed = False
+                            playback_success = {"value": False}
+                        playback_done.set()
+                    if prepared is None or not playback_success['value']:
+                        raise RuntimeError('private_playback_incomplete')
+                else:
+                    self.lipsync.play_audio_nonblocking(audio, on_done=_on_chunk_done)
                 # Block this sequencer turn on lipsync actually finishing,
                 # so chunks play in order even if the user doesn't
                 # externally gate the reply.
@@ -6959,6 +7368,11 @@ class VoiceEngine:
                 original_chars=source_original_chars,
                 played_duration_ms=playback_ms,
                 abort_reason="none" if pending == 0 else "legacy_sequencer_incomplete",
+                stop_confirmed=(
+                    True
+                    if receipt_binding is None
+                    else bool(receipt_binding.stop_confirmed)
+                ),
             )
             self._record_audio_completion(result)
             if pending > 0:
@@ -6976,6 +7390,11 @@ class VoiceEngine:
                 original_chars=len(str(text or "")),
                 played_duration_ms=playback_ms,
                 abort_reason="internal_error",
+                stop_confirmed=(
+                    True
+                    if receipt_binding is None
+                    else bool(receipt_binding.stop_confirmed)
+                ),
             )
             return self._record_audio_completion(result)
 
@@ -7126,8 +7545,8 @@ class VoiceEngine:
         return self._post_tts(url, data, ELEVEN_OUTPUT_FORMAT)
 
     def _pick_tts_model(self, text):
-        """Chỉ dùng eleven_v3 (chất lượng cao, Ba không thích flash)."""
-        return "eleven_v3"
+        """Select the configured public HTTP TTS model."""
+        return ELEVEN_PUBLIC_TTS_MODEL
 
     def _tts_fetch_audio(self, text, profile):
         """Fetch raw audio bytes from ElevenLabs (no cache, no file)."""
@@ -7202,6 +7621,7 @@ class VoiceEngine:
         before_provider=None,
         before_first_audio=None,
         on_first_audio=None,
+        on_sink_frame=None,
         output_stream_factory=None,
     ):
         """Synchronously fetch and play one exact public reply with receipts."""
@@ -7324,6 +7744,7 @@ class VoiceEngine:
                 prepared,
                 before_first_audio=before_first_audio,
                 on_first_audio=on_first_audio,
+                on_sink_frame=on_sink_frame,
                 emit_mouth=False,
                 output_stream_factory=output_stream_factory,
             )
@@ -7446,7 +7867,7 @@ class VoiceEngine:
             "request_reason": reason,
             "text_len": len(raw),
             "endpoint": self._streaming_tts_url(),
-            "model_id": "eleven_v3",
+            "model_id": ELEVEN_PUBLIC_TTS_MODEL,
             "output_format": ELEVEN_OUTPUT_FORMAT or "default",
             "accept": self._accept_for_output_format(ELEVEN_OUTPUT_FORMAT),
             "streaming_enabled": False,
@@ -7486,7 +7907,7 @@ class VoiceEngine:
 
     def _voice_cache_key(self, text, output_format):
         normalized = self._normalize_cache_text(text)
-        source = f"{VOICE_ID}|eleven_v3|{output_format or 'default'}|{normalized}"
+        source = f"{VOICE_ID}|{self._pick_tts_model(text)}|{output_format or 'default'}|{normalized}"
         return hashlib.sha256(source.encode("utf-8")).hexdigest()[:24]
 
     def _voice_cache_path(self, text, output_format):

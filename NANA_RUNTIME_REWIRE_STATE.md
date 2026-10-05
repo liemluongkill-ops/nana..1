@@ -1,5 +1,25 @@
 # Nana Runtime Rewire State
 
+## 2026-10-02 - Current ownership cross-reference
+
+The historical CLI rewiring baseline below remains history. Subsequent Core
+work also includes private Web Chat transport/coordinator/observer and the
+Context Runtime compiler path. These reuse existing source/voice owners;
+they do not replace the canonical autonomy lifecycle or durable memory writer.
+
+Read NANA_CURRENT_CODE_TRUTH.md and the current local Context/Stream state
+notes for the active modules, exact tests and stop points. Context Runtime
+'canonical unavailable' refers to new runtime dispatch readiness, not Wiki
+storage. Default legacy prompting remains separate from bounded private
+NanaApp bridge default ON and public visual default OFF. Old feature-off
+statements must be interpreted by their original dates and scope.
+
+## Historical material
+
+Sections below keep their original dates and claim limits. Earlier
+labels such as current, pending and next step are historical; the
+reconciled overview above and newer owning local evidence take priority.
+
 <!-- STEP 6 STAGING-ONLY LIVE TEST; NOT PROMOTED -->
 
 Last checked: 2026-08-12 (wiki reconciliation; runtime facts current to this snapshot)

@@ -25,6 +25,58 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
+def _autonomy_context(values, *, public=False):
+    from nana.runtime.context_autonomy import (
+        PrivateOwnerAutonomyAuthority,
+        PublicAutonomyAuthority,
+        audience_fields,
+        freeze_autonomy_snapshot,
+        resolve_autonomy_audience,
+    )
+    if public:
+        from nana.autonomy.observer import RealObserver
+        from nana.runtime.public_context_boundary import PublicEventScope
+        from nana.runtime.public_identity import CanonicalPublicIdentity
+        identity = CanonicalPublicIdentity("youtube", "viewer-8d", "youtube:viewer-8d")
+        scope = PublicEventScope(
+            "youtube", "room-8d", "session-8d", "event-8d", "Minh", identity,
+        )
+        allowed = (
+            "active_zone", "active_app", "time", "user_is_typing",
+            "game_active", "command_in_flight", "audio_busy",
+            "scene_relevance", "silence_duration_s", "silence_window_s",
+            "forced_mode", "jitter_value", "web_context", "attention_window",
+        )
+        caller_state = {
+            "platform": "youtube",
+            "room_id": "room-8d",
+            "stream_session_id": "session-8d",
+            "event_id": "event-8d",
+            **{key: values[key] for key in allowed if key in values},
+        }
+        authority = PublicAutonomyAuthority(scope, caller_state)
+        return RealObserver(
+            clock=lambda: 1000.0,
+            wall_clock=lambda: 1000.0,
+            audience_authority=authority,
+        ).get_context()
+    authority = PrivateOwnerAutonomyAuthority()
+    audience = resolve_autonomy_audience(authority)
+    payload = {
+        **values,
+        "audience": audience_fields(audience),
+        "audience_resolved": True,
+        "stream_stage_policy_gate": public,
+    }
+    snapshot = freeze_autonomy_snapshot(
+        audience=audience,
+        payload=payload,
+        captured_wall_time=1000.0,
+        captured_monotonic_time=1000.0,
+    )
+    return {**payload, "_autonomy_snapshot": snapshot}
+
+
 # ─── Helpers ────────────────────────────────────────────────────────────────────
 
 
@@ -348,11 +400,11 @@ def _test_autonomy_stream_policy_scope():
         "attention_window": "browse_active",
     }
 
-    loop._observer.get_context = lambda: dict(base_context)
+    loop._observer.get_context = lambda: _autonomy_context(base_context)
     accepted = loop.tick()
     assert accepted.get("accepted"), f"legacy stream_host banter should not be stream-blocked: {accepted}"
 
-    loop._observer.get_context = lambda: {**base_context, "stream_stage_policy_gate": True}
+    loop._observer.get_context = lambda: _autonomy_context(base_context, public=True)
     blocked = loop.tick()
     assert not blocked.get("accepted"), "explicit public-stage gate should block while offline"
     assert "stream_policy" in blocked.get("reason", ""), f"expected stream_policy reason: {blocked}"

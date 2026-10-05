@@ -61,6 +61,10 @@ def _env_flag(name, default=False):
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "OPENAI_KEY_CUA_BAN")
 ELEVEN_API_KEY = os.getenv("ELEVEN_API_KEY", "ELEVENLABS_KEY_CUA_BAN")
 VOICE_ID = os.getenv("ELEVEN_VOICE_ID", "")
+ELEVEN_PUBLIC_TTS_MODEL = (
+    os.getenv("NANA_ELEVEN_PUBLIC_TTS_MODEL", "eleven_v3").strip()
+    or "eleven_v3"
+)
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
 OPENAI_FALLBACK_MODELS = [
     model.strip()
@@ -70,6 +74,15 @@ OPENAI_FALLBACK_MODELS = [
 
 NANA_CHAT_PROVIDER = os.getenv("NANA_CHAT_PROVIDER", "llmgate").strip().lower()
 NANA_OPENAI_FALLBACK_ENABLED = os.getenv("NANA_OPENAI_FALLBACK_ENABLED", "0") == "1"
+NANA_PRIVATE_WEB_CHAT_ENABLED = _env_flag("NANA_PRIVATE_WEB_CHAT_ENABLED", True)
+NANA_PRIVATE_WEB_CHAT_HOST = os.getenv("NANA_PRIVATE_WEB_CHAT_HOST", "127.0.0.1").strip()
+NANA_PRIVATE_WEB_CHAT_PORT = _bounded_env_int("NANA_PRIVATE_WEB_CHAT_PORT", 8767, 8767, 8767)
+# Strict environment parsing belongs to startup_config_contract. Keep import
+# inert even for malformed numeric overrides so the contract can report them.
+NANA_PRIVATE_WEB_CHAT_BOOTSTRAP_TTL_SECONDS = 10.0
+NANA_PRIVATE_WEB_CHAT_LOCK_WAIT_SECONDS = 5.0
+NANA_PRIVATE_WEB_CHAT_TURN_TIMEOUT_SECONDS = 120.0
+NANA_PRIVATE_WEB_CHAT_SHUTDOWN_DRAIN_SECONDS = 15.0
 LLMGATE_MAIN_MODEL = os.getenv("NANA_LLMGATE_MAIN_MODEL", "gemini-3-flash")
 LLMGATE_MAIN_REASONING_EFFORT = os.getenv("NANA_LLMGATE_MAIN_REASONING_EFFORT", "none").strip().lower()
 LLMGATE_CHEAP_MODEL = os.getenv("NANA_LLMGATE_CHEAP_MODEL", "gpt-5.4-mini")
@@ -281,6 +294,21 @@ LLM_FAST_PRIVATE_MAX_INPUT_CHARS = _bounded_env_int(
 LLM_FAST_PRIVATE_MAX_TOKENS = _bounded_env_int(
     "NANA_LLM_FAST_PRIVATE_MAX_TOKENS", 96, 32, 240
 )
+NANA_CONTEXT_PRIVATE_MODE = os.getenv(
+    "NANA_CONTEXT_PRIVATE_MODE", "legacy"
+).strip().lower()
+NANA_CONTEXT_PUBLIC_GPT_MODE = os.getenv(
+    "NANA_CONTEXT_PUBLIC_GPT_MODE", "legacy"
+).strip().lower()
+NANA_CONTEXT_CUM2_MODE = os.getenv(
+    "NANA_CONTEXT_CUM2_MODE", "legacy"
+).strip().lower()
+NANA_CONTEXT_AUTONOMY_MODE = os.getenv(
+    "NANA_CONTEXT_AUTONOMY_MODE", "legacy"
+).strip().lower()
+NANA_CONTEXT_BUDGET_POLICY_REVISION = os.getenv(
+    "NANA_CONTEXT_BUDGET_POLICY_REVISION", ""
+).strip()
 
 # Memory v2 Phase 2 is deliberately opt-in. These flags only expose bounded
 # read/candidate paths; no flag enables automatic durable promotion.

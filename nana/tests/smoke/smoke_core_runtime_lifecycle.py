@@ -78,6 +78,14 @@ class FakePresenceSession:
         self.stopped.set()
 
 
+class FakeNanaWebLauncher:
+    def __init__(self):
+        self.close_count = 0
+
+    def close(self):
+        self.close_count += 1
+
+
 async def _never_until_cancelled(signal_seen, cancelled_seen):
     try:
         await asyncio.Event().wait()
@@ -97,6 +105,8 @@ def test_normal_shutdown_and_idempotence():
         mouth_finished = asyncio.Event()
         presence_session_finished = asyncio.Event()
         presence_session = FakePresenceSession()
+        web_launcher = FakeNanaWebLauncher()
+        handles.nana_web_launcher = web_launcher
 
         async def owned_worker(finished):
             try:
@@ -139,6 +149,7 @@ def test_normal_shutdown_and_idempotence():
             bridge_signal.set()
 
         def verify_voice_shutdown():
+            assert web_launcher.close_count == 1
             assert handles.pulse_task.done()
             assert handles.vts_mouth_task.done()
             assert handles.bridge_task.done()
@@ -165,10 +176,12 @@ def test_normal_shutdown_and_idempotence():
         assert handles.bridge_task.done()
         assert handles.presence_session_task.done()
         assert presence_session.stop_count == 1
+        assert web_launcher.close_count == 1
         assert owned_loop.thread is not None and not owned_loop.thread.is_alive()
         assert not handles.poller_threads
         assert voice.shutdown_count == 1
         assert vts.close_count == 1
+        assert web_launcher.close_count == 1
         assert presence_session.stop_count == 1
 
         await app._shutdown_runtime(

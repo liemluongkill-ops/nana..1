@@ -405,6 +405,48 @@ def test_safe_transport_failures_keep_precise_read_reason_codes() -> None:
         assert safe_message not in json.dumps(result.to_dict())
 
 
+def test_one_transient_transport_failure_retries_then_delivers() -> None:
+    from nana.runtime.youtube_chat_transport import YouTubeChatTransportError
+    from nana.tools.run_stream_voice_host import run_bounded_voice_host
+
+    transport = _Transport([
+        _page("bootstrap", interval_ms=2_000),
+        YouTubeChatTransportError("YouTube REST request failed"),
+        _page("fresh", interval_ms=2_000, items=[{"id": "after-retry"}]),
+    ])
+    voice_host = _QueueingVoiceHost()
+    control = _Control()
+    monotonic = _Monotonic()
+    sleeps = []
+
+    def sleeper(seconds):
+        sleeps.append(seconds)
+        monotonic.value += seconds
+
+    with patch.dict(os.environ, VOICE_FLAGS, clear=False):
+        result = run_bounded_voice_host(
+            video_id="video-1",
+            transport=transport,
+            voice_host_factory=lambda _chat_id: voice_host,
+            max_turns=1,
+            max_polls=3,
+            timeout_seconds=60.0,
+            monotonic_clock=monotonic,
+            sleep=sleeper,
+            control=control,
+        )
+
+    assert result.status == "completed", result
+    assert result.reason_code == "turn_limit"
+    assert result.turns_delivered == 1
+    assert result.poll_requests == 3
+    assert result.youtube_read_requests == 4
+    assert result.host_ingest_calls == 2
+    assert voice_host.processed_ids == ["after-retry"]
+    assert sleeps == [2.0, 2.0]
+    assert control.events[-1][0] == "stopped"
+
+
 def test_duplicate_pages_drain_once_then_provider_offline_stops_cleanly() -> None:
     from nana.tools.run_stream_voice_host import run_bounded_voice_host
 
@@ -1212,6 +1254,150 @@ def test_live_runtime_wires_one_control_and_generator_delivery_recorder() -> Non
     assert playback_port._control is control
 
 
+def test_live_runtime_visual_bridge_is_default_off_and_session_owned() -> None:
+    from nana.runtime.stream_session_control import StreamSessionControl
+    from nana.tools import run_stream_voice_host as runner
+    import nana.runtime.youtube_chat_transport as transport_module
+
+    class FakeTransport:
+        def __init__(self, credentials):
+            self.credentials = credentials
+
+    class FakeVisualRuntime:
+        def __init__(self, session_id):
+            self.session_id = session_id
+            self.store = object()
+            self.starts = 0
+            self.shutdowns = 0
+
+        def start(self):
+            self.starts += 1
+            return True
+
+        def shutdown(self):
+            self.shutdowns += 1
+
+    assert runner._public_visual_signals_enabled({}) is False
+    assert runner._public_visual_signals_enabled({
+        "NANA_STREAM_PUBLIC_VISUAL_SIGNALS_ENABLED": "1"
+    }) is True
+
+    runtime_calls = []
+    control = StreamSessionControl(clock=lambda: 0.0)
+    with patch.dict(
+        os.environ,
+        {**VOICE_FLAGS, "NANA_STREAM_PUBLIC_VISUAL_SIGNALS_ENABLED": "1"},
+        clear=False,
+    ), patch.object(
+        runner,
+        "_load_runtime_config",
+        return_value=None,
+    ), patch.object(
+        runner,
+        "_gate_reason",
+        return_value=None,
+    ), patch.object(
+        runner,
+        "_select_read_credentials",
+        return_value="fixture-credentials",
+    ), patch.object(
+        transport_module,
+        "YouTubeRestChatTransport",
+        FakeTransport,
+    ):
+        _transport, host_factory = runner._build_live_runtime(
+            video_id="video-1",
+            read_auth="api-key",
+            observed_counts={},
+            control=control,
+            public_visual_runtime_factory=lambda session_id: (
+                runtime_calls.append(FakeVisualRuntime(session_id)) or runtime_calls[-1]
+            ),
+        )
+        voice_host = host_factory("yt-live-chat")
+
+    assert len(runtime_calls) == 1
+    visual_runtime = runtime_calls[0]
+    assert visual_runtime.session_id.startswith("youtube-voice-")
+    assert visual_runtime.starts == 1 and visual_runtime.shutdowns == 0
+    playback_port = voice_host.playback._controller._playback_port_factory()
+    assert playback_port._port._visual_signal_store is visual_runtime.store
+    assert playback_port._port._engine_factory is not None
+    voice_host.shutdown()
+    voice_host.shutdown()
+    assert visual_runtime.shutdowns == 1
+
+    disabled_calls = []
+    with patch.dict(
+        os.environ,
+        {**VOICE_FLAGS, "NANA_STREAM_PUBLIC_VISUAL_SIGNALS_ENABLED": "0"},
+        clear=False,
+    ), patch.object(
+        runner,
+        "_load_runtime_config",
+        return_value=None,
+    ), patch.object(
+        runner,
+        "_gate_reason",
+        return_value=None,
+    ), patch.object(
+        runner,
+        "_select_read_credentials",
+        return_value="fixture-credentials",
+    ), patch.object(
+        transport_module,
+        "YouTubeRestChatTransport",
+        FakeTransport,
+    ):
+        _transport, disabled_factory = runner._build_live_runtime(
+            video_id="video-1",
+            read_auth="api-key",
+            observed_counts={},
+            public_visual_runtime_factory=lambda session_id: disabled_calls.append(session_id),
+        )
+        disabled_host = disabled_factory("yt-live-chat")
+    assert disabled_calls == []
+    disabled_port = disabled_host.playback._controller._playback_port_factory()
+    assert disabled_port._visual_signal_store is None
+
+
+def test_runner_closes_voice_host_on_terminal_return() -> None:
+    from nana.tools.run_stream_voice_host import run_bounded_voice_host
+
+    class ClosingVoiceHost(_QueueingVoiceHost):
+        def __init__(self):
+            super().__init__()
+            self.shutdown_calls = 0
+
+        def shutdown(self):
+            self.shutdown_calls += 1
+
+    transport = _Transport([
+        _page("bootstrap", interval_ms=1_000),
+        _page("fresh", interval_ms=30_000, items=[{"id": "m1"}]),
+    ])
+    voice_host = ClosingVoiceHost()
+    monotonic = _Monotonic()
+
+    def sleeper(seconds):
+        monotonic.value += seconds
+
+    with patch.dict(os.environ, VOICE_FLAGS, clear=False):
+        result = run_bounded_voice_host(
+            video_id="video-1",
+            transport=transport,
+            voice_host_factory=lambda _chat_id: voice_host,
+            max_turns=1,
+            max_polls=2,
+            timeout_seconds=60.0,
+            wall_clock=lambda: 1_700_000_500.0,
+            monotonic_clock=monotonic,
+            sleep=sleeper,
+        )
+    assert result.status == "completed" and result.reason_code == "turn_limit"
+    assert voice_host.shutdown_calls == 1
+
+
 def test_live_runtime_sanitizes_credential_setup_failure() -> None:
     from nana.runtime.youtube_chat_transport import YouTubeChatTransportError
     from nana.tools import run_stream_voice_host as runner
@@ -1286,6 +1472,7 @@ def main() -> None:
         test_each_drained_job_refreshes_wall_time_for_stale_queue_checks,
         test_control_stop_interrupts_production_wait_before_another_read,
         test_safe_transport_failures_keep_precise_read_reason_codes,
+        test_one_transient_transport_failure_retries_then_delivers,
         test_duplicate_pages_drain_once_then_provider_offline_stops_cleanly,
         test_stop_requested_by_fresh_read_prevents_ingest_or_new_work,
         test_turn_limit_stops_before_next_queued_job,
@@ -1304,6 +1491,8 @@ def main() -> None:
         test_explicit_read_auth_never_crosses_credential_sources,
         test_live_runtime_loads_config_then_rechecks_gates_before_credentials,
         test_live_runtime_wires_one_control_and_generator_delivery_recorder,
+        test_live_runtime_visual_bridge_is_default_off_and_session_owned,
+        test_runner_closes_voice_host_on_terminal_return,
         test_live_runtime_sanitizes_credential_setup_failure,
         test_main_rejects_bad_cli_bounds_before_runtime_builder,
         test_main_rejects_blank_video_before_runtime_builder,

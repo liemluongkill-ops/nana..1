@@ -13,6 +13,7 @@ This module is pure/code-only:
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 
 PHASE = "CORE-AFFECT-LANE-1"
 
@@ -43,6 +44,8 @@ def _clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
     try:
         n = float(value)
     except (TypeError, ValueError):
+        n = 0.0
+    if not math.isfinite(n):
         n = 0.0
     return max(low, min(high, n))
 

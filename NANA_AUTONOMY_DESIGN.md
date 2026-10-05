@@ -1,5 +1,21 @@
 # Nana Autonomy Design
 
+## 2026-10-02 - Scope clarification for new agents
+
+The canonical autonomy loop retains its existing ownership. New Context
+Runtime private compiler work and private Web Chat do not create another
+autonomy owner, and private-only acceptance does not enable autonomy/public
+Context profiles. Those remain separately scoped in the latest local
+<NANA_REPO>/nana/docs/CONTEXT_RUNTIME_STATE.md and STREAM_V1_STATE.md.
+Read NANA_CURRENT_STATUS.md for the current evidence summary. The historical
+design and approvals below do not authorize live output or a new workstream.
+
+## Historical material
+
+Sections below keep their original dates and claim limits. Earlier
+labels such as current, pending and next step are historical; the
+reconciled overview above and newer owning local evidence take priority.
+
 Last synced: 2026-07-08 (UTC+7)
 
 Current sync note:

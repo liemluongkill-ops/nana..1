@@ -1,4 +1,5 @@
 import json
+import asyncio
 import random
 import re
 import time
@@ -28,7 +29,7 @@ from nana.config import (
     OPENAI_FALLBACK_MODELS,
     OPENAI_MODEL,
 )
-from nana.brain.llmgate_client import call_llmgate_messages
+from nana.brain.llmgate_client import call_llmgate_compiled, call_llmgate_messages
 from nana.memory import load_recent_chat, memory, memory_lock
 from nana.runtime.history_privacy import redact_history_text
 from nana.runtime.context import context_snapshot
@@ -473,25 +474,126 @@ def _private_memory_retrieval_block(text: str) -> str:
         return ""
 
 
-def _lane_first_inputs(*, text, viewer_name, stream_mode, public_platform, metadata):
+def _lane_first_inputs(
+    *,
+    text,
+    viewer_name,
+    stream_mode,
+    public_platform,
+    metadata,
+    story_mode=False,
+    casual_mode=False,
+    temporal_intent=None,
+    grounding_intent=None,
+    _prepared_private_turn=None,
+    _turn_snapshot=None,
+):
     """Resolve the lane before touching private context or awareness state."""
-    boundary = resolve_request_scope(
-        viewer_name=viewer_name,
-        stream_mode=stream_mode,
-        public_platform=public_platform,
-        metadata=metadata,
+    from nana.runtime.context_shadow import (
+        ContextTurn,
+        context_mapping_with_turn,
+        resolve_context_turn,
     )
+    from nana.runtime.context_contracts import (
+        ContextContractError,
+        Lane,
+        require_resolved_context_request,
+    )
+
+    if temporal_intent is None:
+        temporal_intent = is_temporal_question(text)
+    if grounding_intent is None:
+        grounding_intent = _public_cross_session_query_eligible(text)
+    expected_private_model = LLMGATE_CHEAP_MODEL if casual_mode else LLMGATE_MAIN_MODEL
+    if _prepared_private_turn is None:
+        boundary, context_turn = resolve_context_turn(
+            text=text,
+            viewer_name=viewer_name,
+            stream_mode=stream_mode,
+            public_platform=public_platform,
+            metadata=metadata,
+            private_model=expected_private_model,
+            public_model=llmgate_public_chat_model(),
+            story_mode=story_mode,
+            casual_mode=casual_mode,
+            temporal_intent=temporal_intent,
+            grounding_intent=grounding_intent,
+        )
+    else:
+        if (
+            type(_prepared_private_turn) is not tuple
+            or len(_prepared_private_turn) != 2
+            or type(_prepared_private_turn[1]) is not ContextTurn
+        ):
+            raise ContextContractError("invalid_prepared_private_turn")
+        boundary, context_turn = _prepared_private_turn
+        request = require_resolved_context_request(context_turn.resolved_request)
+        if (
+            getattr(boundary, "public", True)
+            or request.scope.lane is not Lane.PRIVATE_OWNER
+            or bool(stream_mode)
+            or bool(str(viewer_name or "").strip())
+            or bool(str(public_platform or "").strip())
+            or bool(metadata)
+            or request.current_input != str(text)
+            or request.model != expected_private_model
+            or request.story_mode is not bool(story_mode)
+            or request.casual_mode is not bool(casual_mode)
+            or request.temporal_intent is not bool(temporal_intent)
+            or request.grounding_intent is not bool(grounding_intent)
+        ):
+            raise ContextContractError("invalid_prepared_private_turn")
     if getattr(boundary, "public", False):
+        if _turn_snapshot is not None or _prepared_private_turn is not None:
+            raise ContextContractError("private_source_capture_denied")
         scope = getattr(boundary, "scope", None)
         public_context = build_public_safe_snapshot(metadata or {}, text, scope)
         # Public affect is a fixed projection, never the owner's live emotion.
         emotion = {"affection": 0.5, "annoyance": 0.0, "playfulness": 0.55}
-        return boundary, public_context, {}, emotion
-    context = context_snapshot()
-    awareness = build_live_awareness_snapshot(context)
-    with memory_lock:
-        emotion = dict(memory["emotion"])
-    return boundary, context, awareness, emotion
+        return (
+            boundary,
+            context_mapping_with_turn(public_context, context_turn),
+            {},
+            emotion,
+        )
+    request = require_resolved_context_request(context_turn.resolved_request)
+    turn_snapshot = _turn_snapshot
+    if turn_snapshot is None:
+        try:
+            from nana.runtime.context_runtime import capture_turn_snapshot
+
+            turn_snapshot = capture_turn_snapshot(request)
+        except ContextContractError as exc:
+            if exc.code != "source_snapshot_api_unavailable":
+                raise
+    if turn_snapshot is None:
+        context = context_snapshot()
+        awareness = build_live_awareness_snapshot(context)
+        context = context_mapping_with_turn(context, context_turn)
+    else:
+        from nana.runtime.context_runtime import RuntimeContextSnapshot
+
+        if (
+            type(turn_snapshot) is not RuntimeContextSnapshot
+            or turn_snapshot.request is not request
+        ):
+            raise ContextContractError("invalid_source_snapshot")
+        context = turn_snapshot.context_mapping(context_turn)
+        awareness = turn_snapshot.awareness_mapping()
+        emotion = (
+            turn_snapshot.expression_lane_affect()
+            if context_turn.mode == "canonical"
+            else None
+        )
+    if turn_snapshot is None or emotion is None:
+        with memory_lock:
+            emotion = dict(memory["emotion"])
+    return (
+        boundary,
+        context,
+        awareness,
+        emotion,
+    )
 
 
 _PUBLIC_IDENTITY_PROMPT = """Public identity:
@@ -507,6 +609,299 @@ _PUBLIC_CORE_PROMPT = """Public core:
 
 _PUBLIC_VOICE_PROMPT = "Public voice: friendly stage presence, warm but not intimate, concise and non-corporate."
 _PUBLIC_GOVERNOR_PROMPT = "Public Persona Governor: keep it short, friendly, public-safe, and do not use private owner context."
+_PRIVATE_CANONICAL_EXPRESSION_POLICY = """Canonical expression rules:
+- Priority: safety/privacy > direct task > current chat/voice > focus/debug > fresh context > personality > stale context.
+- Personality is an ambient layer, never core logic; expression cannot override safety, privacy, facts, or the direct task.
+- Stale context, residue, and prior mood must not open a new topic.
+- Technical/focus mode stays clear, concise, and actionable. Social mode applies only to an active social task.
+- End reactions cleanly instead of carrying old mood into an unrelated turn.
+- Strict/moderate clamps reduce humor, emoji, exaggeration, callbacks, and roleplay.
+""".strip()
+
+
+def _join_shadow_parts(*values) -> str:
+    return "\n\n".join(str(value) for value in values if str(value).strip())
+
+
+def _build_shadow_candidate_inputs(
+    *,
+    boundary,
+    identity_block,
+    core_self_block,
+    persona_spine_block,
+    public_voice_block,
+    mood_prompt_block,
+    audio_tag_guide,
+    prompt_emotion,
+    affect_prompt_block,
+    context_hint,
+    awareness_hint,
+    memory_retrieval_block,
+    session_checkpoint_block,
+    recent_moments_hint,
+    temporal_block,
+    public_room_context,
+    public_grounding_block,
+    public_stage_identity_block,
+    persona_governor_block,
+    time_hint,
+    output_behavior_block,
+    shared_history_block,
+    extra_mode_rules,
+    short_context,
+    long_context,
+    rules,
+    browser_hint,
+):
+    from nana.runtime.context_shadow import (
+        private_candidate_inputs,
+        public_candidate_inputs,
+    )
+
+    expression = _join_shadow_parts(
+        public_voice_block,
+        mood_prompt_block,
+        (
+            "Emotion state:\n"
+            f"affection={prompt_emotion['affection']:.2f}\n"
+            f"annoyance={prompt_emotion['annoyance']:.2f}\n"
+            f"playfulness={prompt_emotion['playfulness']:.2f}"
+        ),
+        affect_prompt_block,
+    )
+    output_contract = _join_shadow_parts(
+        audio_tag_guide,
+        persona_governor_block,
+        output_behavior_block,
+    )
+    if getattr(boundary, "public", False):
+        return public_candidate_inputs(
+            # Public shadow core is lane-safe and never reuses NANA_PERSONALITY.
+            core=_PUBLIC_CORE_PROMPT,
+            policy=_PUBLIC_IDENTITY_PROMPT,
+            output_contract=_join_shadow_parts(
+                _PUBLIC_VOICE_PROMPT,
+                _PUBLIC_GOVERNOR_PROMPT,
+                output_contract,
+            ),
+            public_session=public_room_context,
+            expression=expression,
+            request_context=_join_shadow_parts(
+                boundary.prompt_block,
+                context_hint,
+                public_stage_identity_block,
+            ),
+            grounding=public_grounding_block,
+            turn_mode=extra_mode_rules,
+        )
+    return private_candidate_inputs(
+        core=NANA_PERSONALITY,
+        policy=boundary.prompt_block,
+        output_contract=output_contract,
+        identity=_join_shadow_parts(
+            identity_block,
+            core_self_block,
+            persona_spine_block,
+        ),
+        relationship=shared_history_block,
+        preferences=rules,
+        session_summary=session_checkpoint_block,
+        recent_turns=_join_shadow_parts(
+            recent_moments_hint,
+            short_context,
+            long_context,
+        ),
+        expression=expression,
+        situation=_join_shadow_parts(
+            context_hint,
+            awareness_hint,
+            time_hint,
+            browser_hint,
+        ),
+        temporal=temporal_block,
+        retrieval=memory_retrieval_block,
+        turn_mode=extra_mode_rules,
+    )
+
+
+def _observe_shadow_payload(
+    *,
+    context,
+    boundary,
+    messages,
+    model,
+    route=None,
+    candidate_values=None,
+):
+    from nana.runtime.context_contracts import ContextContractError, Route
+    from nana.runtime.context_shadow import observe_provider_bound_context
+
+    selected_route = Route.INTERACTIVE if route is None else Route(route)
+    candidate_factory = None
+    if candidate_values is not None:
+        candidate_factory = lambda: _build_shadow_candidate_inputs(
+            **candidate_values
+        )
+    try:
+        return observe_provider_bound_context(
+            context=context,
+            boundary=boundary,
+            messages=messages,
+            model=model,
+            route=selected_route,
+            candidate_factory=candidate_factory,
+        )
+    except ContextContractError as exc:
+        if exc.code in {"invalid_context_mode", "budget_policy_unapproved"}:
+            raise
+        return None
+    except Exception:
+        return None
+
+
+def _canonical_current_snapshot(context, awareness, request):
+    """Return the attested source snapshot explicitly bound to this turn."""
+    from nana.runtime.context_contracts import ContextContractError
+    from nana.runtime.context_runtime import runtime_snapshot_from_context
+
+    snapshot = runtime_snapshot_from_context(context)
+    if snapshot is None:
+        raise ContextContractError('canonical_source_snapshot_unavailable')
+    if snapshot.request is not request:
+        raise ContextContractError('invalid_source_snapshot')
+    return snapshot
+
+
+def _captured_awareness_memory(context):
+    from nana.runtime.context_runtime import runtime_snapshot_from_context
+
+    snapshot = runtime_snapshot_from_context(context)
+    return snapshot.awareness_memory_view() if snapshot is not None else None
+
+
+def _is_canonical_private_context(boundary, context):
+    if getattr(boundary, "public", True):
+        return False
+    from nana.runtime.context_shadow import context_turn_from_mapping
+
+    turn = context_turn_from_mapping(context)
+    return turn is not None and turn.mode == "canonical"
+
+
+def _private_canonical_plan(*, text, boundary, context, awareness,
+                            evidence=None, story_mode, casual_mode):
+    """Single private source projection and planning seam used by both entries."""
+    from nana.runtime.context_shadow import context_turn_from_mapping
+    turn = context_turn_from_mapping(context)
+    if turn is None or turn.mode != 'canonical':
+        return None
+    from nana.runtime import context_runtime as canonical_runtime
+    from nana.runtime.context_adapters import (
+        build_continuity_sections,
+        build_continuity_view,
+        build_private_expression_section,
+        build_current_situation_section,
+        build_memory_context_bundle,
+    )
+    from nana.runtime.context_contracts import (
+        ContextContractError, ContextSection, Freshness, Lane, Lifetime,
+        SemanticRole, SourceRef,
+    )
+    request = canonical_runtime.require_private_policy(
+        turn.resolved_request, canonical_runtime.PRIVATE_POLICY_REVISION)
+    if boundary.public:
+        raise ContextContractError('unapproved_canonical_profile')
+    snapshot = _canonical_current_snapshot(context, awareness, request)
+    runtime_snapshot = (
+        snapshot
+        if type(snapshot) is canonical_runtime.RuntimeContextSnapshot
+        else None
+    )
+    if runtime_snapshot is None:
+        raise ContextContractError('canonical_source_snapshot_unavailable')
+    current_situation_section = build_current_situation_section(
+        runtime_snapshot,
+        request,
+    )
+    continuity_view = build_continuity_view(
+        request,
+        snapshot=runtime_snapshot,
+        relevant_old_turns=(),
+    )
+    continuity_sections = build_continuity_sections(continuity_view, request)
+    if runtime_snapshot.private_memory is None:
+        raise ContextContractError('canonical_source_snapshot_unavailable')
+    memory_bundle = build_memory_context_bundle(
+        request,
+        runtime_snapshot.private_memory,
+        redact=redact_history_text,
+    )
+    current_user = resolve_user(message=text, viewer_name=None, stream_mode=False)
+    identity = format_identity_block(current_user, persona_boundary=boundary)
+    core_self, spine, _public_voice = _identity_prompt_blocks_for_boundary(boundary)
+    mode = ''
+    if story_mode:
+        mode = ('Story mode:\n- Không gọi nhân vật trong truyện là "Ba".\n'
+                '- Không tự động đưa Nana vào vai nhân vật.\n- Giữ nhân vật, tên riêng và đại từ nhất quán.\n'
+                '- Kể ngắn gọn, grounded, conversational.')
+    elif casual_mode:
+        mode = ('Casual mode:\n- Đây chỉ là ping ngắn hoặc nói chuyện vu vơ.\n'
+                '- Trả lời đúng 1 câu ngắn, tự nhiên.\n- Không hỏi ngược cho đủ bài.\n'
+                '- Không dùng kiểu "có gì mới không", "có gì đặc biệt không", "Ba cần gì".\n'
+                '- Ưu tiên xác nhận nhẹ, trêu nhẹ, hoặc cười nhẹ là dừng.')
+    rows = []
+    def section(id, lifetime, role, owner, payload, limit):
+        if not payload.strip():
+            return
+        rows.append(ContextSection(
+            id=id, lifetime=lifetime, semantic_role=role,
+            freshness=Freshness.FRESH,
+            visibility=frozenset({Lane.PRIVATE_OWNER}),source=SourceRef(owner,'canonical.private.v1',id),
+            revision='materialized.v1',authority=None,
+            observed_at=None,
+            expires_at=None,conflict_key=None,dedupe_key=id,max_tokens=limit,payload=payload,
+            formatter_version='private_legacy_adapter.v1',required=True,
+            budget_class='retained_legacy',semantic_status='active',provenance=(),relevance=1.,
+        ))
+    S,D,T=Lifetime.STATIC,Lifetime.DURABLE,Lifetime.TURN
+    I,ID,F,E=SemanticRole.INSTRUCTION,SemanticRole.IDENTITY,SemanticRole.FACT,SemanticRole.EVIDENCE
+    section('core.private.v1',S,I,'core',NANA_PERSONALITY,2500)
+    section('policy.private.v1',S,I,'core',boundary.prompt_block,1000)
+    section('contract.output.private.v1',S,I,'core',_join_shadow_parts(
+        _audio_tag_prompt_for_boundary(boundary,story_mode=story_mode),
+        _PRIVATE_CANONICAL_EXPRESSION_POLICY,
+        _private_output_behavior("")),1600 if story_mode else 1000)
+    section('identity.owner.v1',D,ID,'owner_identity',_join_shadow_parts(identity,core_self,spine),1000)
+    section('relationship.shared.v1',D,F,'owner_identity',NANA_SHARED_HISTORY,400)
+    rows.extend(memory_bundle.sections)
+    rows.extend(continuity_sections)
+    rows.append(build_private_expression_section(runtime_snapshot, request))
+    if current_situation_section is not None:
+        rows.append(current_situation_section)
+    section('mode.turn.private.v1',T,I,'expression',mode,600)
+    plan = canonical_runtime.build_turn_plan(canonical_runtime.GptTurnInput(
+        request=request,sections=tuple(rows),evidence=None,
+        model=llmgate_model_for_boundary(boundary,casual_mode=casual_mode),
+        max_output_tokens=_reply_max_tokens_for_text(text,story_mode=story_mode),
+        budget_revision=canonical_runtime.PRIVATE_POLICY_REVISION,
+        memory_bundle=memory_bundle,
+    ), redact=redact_history_text)
+    return plan
+
+
+def _canonical_grounded_reply(plan, reply, text):
+    if plan.memory_bundle is not None:
+        if plan.memory_bundle.evidence is None:
+            return reply
+        from nana.runtime.memory_grounding import verify_memory_context_bundle
+        result = verify_memory_context_bundle(
+            plan.memory_bundle, reply, user_text=text
+        )
+        return result.suggested_fallback if not result.passed and result.suggested_fallback else reply
+    if plan.evidence is None:
+        return reply
+    result = grounding_verify_reply(plan.evidence.to_verifier_evidence(), reply, user_text=text)
+    return result.suggested_fallback if not result.passed and result.suggested_fallback else reply
 
 
 def _format_public_request_context(context: dict) -> str:
@@ -802,7 +1197,12 @@ def normalize_model_artifacts(text: str) -> str:
     return cleaned
 
 
-def build_temporal_prompt_block(awareness: dict | None = None) -> str:
+def build_temporal_prompt_block(
+    awareness: dict | None = None,
+    *,
+    memory_view=None,
+    captured_at: float | None = None,
+) -> str:
     """Build the strict temporal-question prompt block (Task 7C Fix V2).
 
     When the user asks about recent events ("nãy giờ", "vừa rồi"), this block
@@ -815,10 +1215,13 @@ def build_temporal_prompt_block(awareness: dict | None = None) -> str:
 
     Call this ONLY when is_temporal_question(user_text) is True.
     """
-    try:
-        mem = get_awareness_memory()
-    except Exception:
-        return ""
+    if memory_view is None:
+        try:
+            mem = get_awareness_memory()
+        except Exception:
+            return ""
+    else:
+        mem = memory_view
 
     block_parts = []
 
@@ -826,7 +1229,7 @@ def build_temporal_prompt_block(awareness: dict | None = None) -> str:
     recent = mem.get_recent(limit=3, min_importance="low")
     frozen_snap = None
     frozen_moment_age = None
-    now = time.time()
+    now = time.time() if captured_at is None else captured_at
 
     for m in recent:
         if m.frozen_awareness:
@@ -951,7 +1354,15 @@ def _detect_lane(viewer_name: str | None, public_style_hint: str, stream_mode: b
     return "private_owner"
 
 
-def _private_memory_evidence_for_turn(text, boundary, viewer_name, public_style_hint, stream_mode):
+def _private_memory_evidence_for_turn(
+    text,
+    boundary,
+    viewer_name,
+    public_style_hint,
+    stream_mode,
+    *,
+    include_checkpoint=True,
+):
     """Resolve a private memory claim before any shortcut can emit a reply."""
     if (
         not _GROUNDING_AVAILABLE
@@ -961,10 +1372,15 @@ def _private_memory_evidence_for_turn(text, boundary, viewer_name, public_style_
         return None
     try:
         lane = _detect_lane(viewer_name, public_style_hint, stream_mode)
-        claim, evidence = ground_user_message(text, lane=lane, viewer_name=viewer_name)
+        claim, evidence = ground_user_message(
+            text,
+            lane=lane,
+            viewer_name=viewer_name,
+            include_checkpoint=include_checkpoint,
+        )
         if claim:
             return evidence
-        if lane == "private_owner":
+        if lane == "private_owner" and include_checkpoint:
             from nana.runtime.session_checkpoint import (
                 private_checkpoint_evidence_candidates,
             )
@@ -1426,7 +1842,19 @@ def _public_quiet_room_fast_reply(text: str) -> str:
     )
 
 
-def ask_gpt(text, story_mode=False, casual_mode=False, viewer_name=None, stream_mode=False, public_style_hint="", public_platform=None, metadata=None):
+def ask_gpt(
+    text,
+    story_mode=False,
+    casual_mode=False,
+    viewer_name=None,
+    stream_mode=False,
+    public_style_hint="",
+    public_platform=None,
+    metadata=None,
+    *,
+    _prepared_private_turn=None,
+    _turn_snapshot=None,
+):
     text = redact_history_text(text)
     # ─── HARD-GROUNDED PATH (Task 7C Fix V3 + 7C-P Surface Formatter) ──────────
     # Intercept "đang xem gì" / "đang làm gì" / "nãy giờ" questions.
@@ -1437,9 +1865,25 @@ def ask_gpt(text, story_mode=False, casual_mode=False, viewer_name=None, stream_
         stream_mode=stream_mode,
         public_platform=public_platform,
         metadata=metadata,
+        story_mode=story_mode,
+        casual_mode=casual_mode,
+        temporal_intent=is_temporal_question(text),
+        grounding_intent=_public_cross_session_query_eligible(text),
+        _prepared_private_turn=_prepared_private_turn,
+        _turn_snapshot=_turn_snapshot,
     )
-    _last_evidence_for_verifier = _private_memory_evidence_for_turn(
-        text, boundary, viewer_name, public_style_hint, stream_mode
+    canonical_private_context = _is_canonical_private_context(boundary, context)
+    _last_evidence_for_verifier = (
+        None
+        if canonical_private_context
+        else _private_memory_evidence_for_turn(
+            text,
+            boundary,
+            viewer_name,
+            public_style_hint,
+            stream_mode,
+            include_checkpoint=True,
+        )
     )
     public_grounding_decision = _public_grounding_decision_for_turn(
         text, boundary, context, stream=False
@@ -1470,9 +1914,12 @@ def ask_gpt(text, story_mode=False, casual_mode=False, viewer_name=None, stream_
     # Private context and emotion are loaded only by _lane_first_inputs after
     # the request has been proven to be in the private lane.
     lane_key = "public_stage" if getattr(boundary, "public", False) else _detect_lane(viewer_name, public_style_hint, stream_mode)
-    lane_affect = project_affect(emotion, lane_key)
+    lane_affect = (
+        project_affect(emotion, lane_key)
+        if type(emotion) is dict
+        else emotion
+    )
     prompt_emotion = lane_affect.as_emotion_dict()
-    affect_prompt_block = format_affect_prompt_block(lane_affect)
 
     if not boundary.livestream and _is_public_service_role_rehearsal(text):
         reply = _public_service_role_rehearsal_reply()
@@ -1528,9 +1975,14 @@ def ask_gpt(text, story_mode=False, casual_mode=False, viewer_name=None, stream_
     # Use deterministic temporal data from frozen awareness moments.
     if boundary.public and is_temporal_question(text) and not _public_has_session_context(boundary):
         return _maybe_public_reply(_public_no_knowledge_reply("temporal"), user_text=text, viewer_name=viewer_name, boundary=boundary)
-    if not boundary.public and is_temporal_question(text) and _last_evidence_for_verifier is None:
+    if (
+        not boundary.public
+        and not canonical_private_context
+        and is_temporal_question(text)
+        and _last_evidence_for_verifier is None
+    ):
         try:
-            mem = get_awareness_memory()
+            mem = _captured_awareness_memory(context) or get_awareness_memory()
             det_temporal = get_deterministic_temporal_answer(mem, max_moments=3)
             if det_temporal:
                 # Build ground truth from the frozen temporal data
@@ -1555,6 +2007,25 @@ def ask_gpt(text, story_mode=False, casual_mode=False, viewer_name=None, stream_
         except Exception:
             pass
     # ─── END HARD-GROUNDED PATH ────────────────────────────────────────────────
+
+    canonical_plan = _private_canonical_plan(
+        text=text,boundary=boundary,context=context,awareness=awareness,
+        evidence=_last_evidence_for_verifier,story_mode=story_mode,casual_mode=casual_mode,
+    )
+    if canonical_plan is not None:
+        content, debug, _receipt = call_llmgate_compiled(
+            canonical_plan.compiled,
+            max_tokens=canonical_plan.max_output_tokens,
+            temperature=canonical_plan.temperature,
+            timeout_s=30,
+        )
+        if content is None:
+            raise RuntimeError(f"LLMGate canonical transport failed: {debug}")
+        reply = _canonical_grounded_reply(canonical_plan,content,text)
+        reply = _core_self_repair_reply(reply,user_text=text,boundary=boundary)
+        return _maybe_public_reply(reply,user_text=text,viewer_name=viewer_name,boundary=boundary)
+
+    affect_prompt_block = format_affect_prompt_block(lane_affect)
 
     if boundary.public:
         short_context = "(private chat context withheld for public viewer chat)"
@@ -1639,7 +2110,8 @@ def ask_gpt(text, story_mode=False, casual_mode=False, viewer_name=None, stream_
     recent_moments_hint = ""
     if not boundary.public:
         try:
-            recent_moments_hint = get_awareness_memory().format_recent_moments_block(limit=5)
+            recent_owner = _captured_awareness_memory(context) or get_awareness_memory()
+            recent_moments_hint = recent_owner.format_recent_moments_block(limit=5)
         except Exception:
             recent_moments_hint = "RECENT MOMENTS: (unavailable)"
 
@@ -1647,7 +2119,13 @@ def ask_gpt(text, story_mode=False, casual_mode=False, viewer_name=None, stream_
     # prompt block. This prevents old chat history from overriding recent moments.
     temporal_block = ""
     if not boundary.public and is_temporal_question(text):
-        temporal_block = "\n\n" + build_temporal_prompt_block(awareness)
+        captured_memory = _captured_awareness_memory(context)
+        captured_snapshot = getattr(context, "_runtime_context_snapshot", None)
+        temporal_block = "\n\n" + build_temporal_prompt_block(
+            awareness,
+            memory_view=captured_memory,
+            captured_at=getattr(captured_snapshot, "captured_at", None),
+        )
 
     extra_mode_rules = ""
     if story_mode:
@@ -1694,8 +2172,13 @@ Casual mode:
         try:
             from nana.runtime.public_stage_identity import build_public_stage_prompt_block
             room_topic = str((context.get("public_metadata") or {}).get("topic") or "")
+            viewer_label = str(
+                getattr(getattr(boundary, "scope", None), "display_name", "") or ""
+            ).strip()
+            if not viewer_label:
+                viewer_label = str(current_user["name"]).strip()
             public_stage_identity_block = build_public_stage_prompt_block(
-                viewer_name=text or "viewer",
+                viewer_name=viewer_label,
                 stage_mood="live",
                 room_topic=str(room_topic or ""),
             )
@@ -1774,8 +2257,7 @@ LUẬT / THÔNG TIN QUAN TRỌNG:
 {rules}
 
 LIVE BROWSER CONTEXT - CURRENT STATE, HIGHEST PRIORITY FOR BROWSER QUESTIONS:
-{browser_hint}
-{boundary.prompt_block if boundary.livestream else ''}""",
+{browser_hint}""",
         },
         {"role": "user", "content": text},
     ]
@@ -1787,15 +2269,66 @@ LIVE BROWSER CONTEXT - CURRENT STATE, HIGHEST PRIORITY FOR BROWSER QUESTIONS:
             pass
 
     messages = [{**message, 'content': redact_history_text(message['content'])} for message in messages]
-    response = create_chat_completion_with_fallback(
-        max_tokens=_reply_max_tokens_for_text(text, story_mode=story_mode),
-        temperature=0.75,
-        timeout=30,
-        messages=messages,
+    requested_model = llmgate_model_for_boundary(
+        boundary,
         casual_mode=casual_mode,
-        preferred_model=llmgate_model_for_boundary(boundary, casual_mode=casual_mode),
-        preferred_fallback_models=llmgate_public_model_order() if getattr(boundary, "public", False) else None,
     )
+    _observe_shadow_payload(
+        context=context,
+        boundary=boundary,
+        messages=messages,
+        model=requested_model,
+        candidate_values={
+            "boundary": boundary,
+            "identity_block": identity_block,
+            "core_self_block": core_self_block,
+            "persona_spine_block": persona_spine_block,
+            "public_voice_block": public_voice_block,
+            "mood_prompt_block": mood_prompt_block,
+            "audio_tag_guide": audio_tag_guide,
+            "prompt_emotion": prompt_emotion,
+            "affect_prompt_block": affect_prompt_block,
+            "context_hint": context_hint,
+            "awareness_hint": awareness_hint,
+            "memory_retrieval_block": memory_retrieval_block,
+            "session_checkpoint_block": session_checkpoint_block,
+            "recent_moments_hint": recent_moments_hint,
+            "temporal_block": temporal_block,
+            "public_room_context": public_room_context,
+            "public_grounding_block": public_grounding_block,
+            "public_stage_identity_block": public_stage_identity_block,
+            "persona_governor_block": persona_governor_block,
+            "time_hint": time_hint,
+            "output_behavior_block": output_behavior_block,
+            "shared_history_block": shared_history_block,
+            "extra_mode_rules": extra_mode_rules,
+            "short_context": short_context,
+            "long_context": long_context,
+            "rules": rules,
+            "browser_hint": browser_hint,
+        },
+    )
+    response = None
+    if _openai_direct_for_boundary(boundary):
+        from nana.brain.openai_direct_client import call_openai_direct_messages
+
+        direct_content, _direct_debug = call_openai_direct_messages(
+            messages,
+            max_tokens=_reply_max_tokens_for_text(text, story_mode=story_mode),
+            temperature=0.75,
+        )
+        if direct_content:
+            response = LLMGateResponse(direct_content)
+    if response is None:
+        response = create_chat_completion_with_fallback(
+            max_tokens=_reply_max_tokens_for_text(text, story_mode=story_mode),
+            temperature=0.75,
+            timeout=30,
+            messages=messages,
+            casual_mode=casual_mode,
+            preferred_model=requested_model,
+            preferred_fallback_models=llmgate_public_model_order() if getattr(boundary, "public", False) else None,
+        )
     reply = response.choices[0].message.content
 
     if _last_evidence_for_verifier is not None:
@@ -1833,6 +2366,9 @@ async def ask_gpt_stream(
     public_style_hint="",
     public_platform=None,
     metadata=None,
+    *,
+    _prepared_private_turn=None,
+    _turn_snapshot=None,
 ):
     """Streaming version of ask_gpt. Yields text chunks as they arrive from the LLM.
 
@@ -1845,6 +2381,7 @@ async def ask_gpt_stream(
     """
     from nana.brain.llmgate_client import (
         call_llmgate_messages,
+        stream_llmgate_compiled,
         stream_llmgate_messages,
     )
     text = redact_history_text(text)
@@ -1856,9 +2393,25 @@ async def ask_gpt_stream(
         stream_mode=stream_mode,
         public_platform=public_platform,
         metadata=metadata,
+        story_mode=story_mode,
+        casual_mode=casual_mode,
+        temporal_intent=is_temporal_question(text),
+        grounding_intent=_public_cross_session_query_eligible(text),
+        _prepared_private_turn=_prepared_private_turn,
+        _turn_snapshot=_turn_snapshot,
     )
-    _stream_evidence = _private_memory_evidence_for_turn(
-        text, boundary, viewer_name, public_style_hint, stream_mode
+    canonical_private_context = _is_canonical_private_context(boundary, context)
+    _stream_evidence = (
+        None
+        if canonical_private_context
+        else _private_memory_evidence_for_turn(
+            text,
+            boundary,
+            viewer_name,
+            public_style_hint,
+            stream_mode,
+            include_checkpoint=True,
+        )
     )
     public_grounding_decision = _public_grounding_decision_for_turn(
         text, boundary, context, stream=True
@@ -1893,9 +2446,12 @@ async def ask_gpt_stream(
     # Private context and emotion are loaded only by _lane_first_inputs after
     # the request has been proven to be in the private lane.
     lane_key = "public_stage" if getattr(boundary, "public", False) else _detect_lane(viewer_name, public_style_hint, stream_mode)
-    lane_affect = project_affect(emotion, lane_key)
+    lane_affect = (
+        project_affect(emotion, lane_key)
+        if type(emotion) is dict
+        else emotion
+    )
     prompt_emotion = lane_affect.as_emotion_dict()
-    affect_prompt_block = format_affect_prompt_block(lane_affect)
 
     if not boundary.livestream and _is_public_service_role_rehearsal(text):
         yield _maybe_public_reply(_public_service_role_rehearsal_reply(), user_text=text, viewer_name=viewer_name, boundary=boundary)
@@ -1957,9 +2513,14 @@ async def ask_gpt_stream(
     if boundary.public and is_temporal_question(text) and not _public_has_session_context(boundary):
         yield _maybe_public_reply(_public_no_knowledge_reply("temporal"), user_text=text, viewer_name=viewer_name, boundary=boundary)
         return
-    if not boundary.public and is_temporal_question(text) and _stream_evidence is None:
+    if (
+        not boundary.public
+        and not canonical_private_context
+        and is_temporal_question(text)
+        and _stream_evidence is None
+    ):
         try:
-            mem = get_awareness_memory()
+            mem = _captured_awareness_memory(context) or get_awareness_memory()
             det_temporal = get_deterministic_temporal_answer(mem, max_moments=3)
             if det_temporal:
                 lower_q = text.lower()
@@ -1985,6 +2546,11 @@ async def ask_gpt_stream(
         casual_mode=casual_mode,
     )
     record_fast_lane_decision(fast_decision)
+    from nana.runtime.context_shadow import context_turn_from_mapping
+    canonical_turn = context_turn_from_mapping(context)
+    if fast_decision.eligible and not boundary.public and _stream_evidence is None and canonical_turn is not None and canonical_turn.mode == 'canonical':
+        from nana.runtime.context_contracts import ContextContractError
+        raise ContextContractError('unsupported_compiler_profile')
     if fast_decision.eligible and not boundary.public and _stream_evidence is None:
         with memory_lock:
             fast_recent = list(memory.get("short_term", []))[-2:]
@@ -1996,7 +2562,14 @@ async def ask_gpt_stream(
             recent_lines=fast_recent,
         )
         fast_messages = [{**message, 'content': redact_history_text(message['content'])} for message in fast_messages]
-        fast_reply, _fast_debug = call_llmgate_messages(
+        _observe_shadow_payload(
+            context=context,
+            boundary=boundary,
+            messages=fast_messages,
+            model=fast_decision.model,
+            route="private_fast",
+        )
+        fast_reply, _fast_debug = await asyncio.to_thread(call_llmgate_messages,
             model_name=fast_decision.model,
             messages=fast_messages,
             max_tokens=LLM_FAST_PRIVATE_MAX_TOKENS,
@@ -2011,6 +2584,27 @@ async def ask_gpt_stream(
         if fast_validation.accepted:
             yield fast_validation.reply
             return
+
+    canonical_plan = _private_canonical_plan(
+        text=text,boundary=boundary,context=context,awareness=awareness,
+        evidence=_stream_evidence,story_mode=story_mode,casual_mode=casual_mode,
+    )
+    if canonical_plan is not None:
+        from nana.runtime.async_stream_bridge import iterate_blocking
+        source = iterate_blocking(stream_llmgate_compiled(
+            canonical_plan.compiled,
+            max_tokens=canonical_plan.max_output_tokens,
+            temperature=canonical_plan.temperature,
+        ))
+        if canonical_plan.evidence is not None:
+            buffered = [chunk async for chunk in source]
+            yield _canonical_grounded_reply(canonical_plan,''.join(buffered),text)
+        else:
+            async for chunk in source:
+                yield chunk
+        return
+
+    affect_prompt_block = format_affect_prompt_block(lane_affect)
 
     if boundary.public:
         short_context = "(private chat context withheld for public viewer chat)"
@@ -2094,7 +2688,8 @@ async def ask_gpt_stream(
     recent_moments_hint = ""
     if not boundary.public:
         try:
-            recent_moments_hint = get_awareness_memory().format_recent_moments_block(limit=5)
+            recent_owner = _captured_awareness_memory(context) or get_awareness_memory()
+            recent_moments_hint = recent_owner.format_recent_moments_block(limit=5)
         except Exception:
             recent_moments_hint = "RECENT MOMENTS: (unavailable)"
 
@@ -2102,7 +2697,13 @@ async def ask_gpt_stream(
     # prompt block. This prevents old chat history from overriding recent moments.
     temporal_block = ""
     if not boundary.public and is_temporal_question(text):
-        temporal_block = "\n\n" + build_temporal_prompt_block(awareness)
+        captured_memory = _captured_awareness_memory(context)
+        captured_snapshot = getattr(context, "_runtime_context_snapshot", None)
+        temporal_block = "\n\n" + build_temporal_prompt_block(
+            awareness,
+            memory_view=captured_memory,
+            captured_at=getattr(captured_snapshot, "captured_at", None),
+        )
 
     extra_mode_rules = ""
     if story_mode:
@@ -2149,8 +2750,13 @@ Casual mode:
         try:
             from nana.runtime.public_stage_identity import build_public_stage_prompt_block
             room_topic = str((context.get("public_metadata") or {}).get("topic") or "")
+            viewer_label = str(
+                getattr(getattr(boundary, "scope", None), "display_name", "") or ""
+            ).strip()
+            if not viewer_label:
+                viewer_label = str(current_user["name"]).strip()
             public_stage_identity_block = build_public_stage_prompt_block(
-                viewer_name=text or "viewer",
+                viewer_name=viewer_label,
                 stage_mood="live",
                 room_topic=str(room_topic or ""),
             )
@@ -2229,8 +2835,7 @@ LUẬT / THÔNG TIN QUAN TRỌNG:
 {rules}
 
 LIVE BROWSER CONTEXT - CURRENT STATE, HIGHEST PRIORITY FOR BROWSER QUESTIONS:
-{browser_hint}
-{boundary.prompt_block if boundary.livestream else ''}""",
+{browser_hint}""",
         },
         {"role": "user", "content": text},
     ]
@@ -2242,10 +2847,50 @@ LIVE BROWSER CONTEXT - CURRENT STATE, HIGHEST PRIORITY FOR BROWSER QUESTIONS:
             pass
 
     messages = [{**message, 'content': redact_history_text(message['content'])} for message in messages]
+    requested_model = (
+        llmgate_public_chat_model()
+        if boundary.public
+        else llmgate_model_for_boundary(boundary, casual_mode=casual_mode)
+    )
+    _observe_shadow_payload(
+        context=context,
+        boundary=boundary,
+        messages=messages,
+        model=requested_model,
+        candidate_values={
+            "boundary": boundary,
+            "identity_block": identity_block,
+            "core_self_block": core_self_block,
+            "persona_spine_block": persona_spine_block,
+            "public_voice_block": public_voice_block,
+            "mood_prompt_block": mood_prompt_block,
+            "audio_tag_guide": audio_tag_guide,
+            "prompt_emotion": prompt_emotion,
+            "affect_prompt_block": affect_prompt_block,
+            "context_hint": context_hint,
+            "awareness_hint": awareness_hint,
+            "memory_retrieval_block": memory_retrieval_block,
+            "session_checkpoint_block": session_checkpoint_block,
+            "recent_moments_hint": recent_moments_hint,
+            "temporal_block": temporal_block,
+            "public_room_context": public_room_context,
+            "public_grounding_block": public_grounding_block,
+            "public_stage_identity_block": public_stage_identity_block,
+            "persona_governor_block": persona_governor_block,
+            "time_hint": time_hint,
+            "output_behavior_block": output_behavior_block,
+            "shared_history_block": shared_history_block,
+            "extra_mode_rules": extra_mode_rules,
+            "short_context": short_context,
+            "long_context": long_context,
+            "rules": rules,
+            "browser_hint": browser_hint,
+        },
+    )
     if boundary.public:
         buffered = []
         for chunk in stream_llmgate_messages(
-            model_name=llmgate_public_chat_model(),
+            model_name=requested_model,
             messages=messages,
             max_tokens=_reply_max_tokens_for_text(text, story_mode=story_mode),
             temperature=0.75,
@@ -2279,12 +2924,15 @@ LIVE BROWSER CONTEXT - CURRENT STATE, HIGHEST PRIORITY FOR BROWSER QUESTIONS:
 
     if _GROUNDING_AVAILABLE and _stream_evidence is not None:
         buffered = []
-        for chunk in stream_llmgate_messages(
-            model_name=llmgate_model_for_boundary(boundary, casual_mode=casual_mode),
+        from nana.runtime.async_stream_bridge import iterate_blocking
+        async for chunk in iterate_blocking(_private_chat_stream(
+            stream_llmgate_messages,
+            boundary=boundary,
+            model_name=requested_model,
             messages=messages,
             max_tokens=_reply_max_tokens_for_text(text, story_mode=story_mode),
             temperature=0.75,
-        ):
+        )):
             buffered.append(chunk)
         reply = "".join(buffered)
         try:
@@ -2296,13 +2944,63 @@ LIVE BROWSER CONTEXT - CURRENT STATE, HIGHEST PRIORITY FOR BROWSER QUESTIONS:
         yield reply
         return
 
-    for chunk in stream_llmgate_messages(
-        model_name=llmgate_model_for_boundary(boundary, casual_mode=casual_mode),
+    from nana.runtime.async_stream_bridge import iterate_blocking
+    async for chunk in iterate_blocking(_private_chat_stream(
+        stream_llmgate_messages,
+        boundary=boundary,
+        model_name=requested_model,
         messages=messages,
         max_tokens=_reply_max_tokens_for_text(text, story_mode=story_mode),
         temperature=0.75,
-    ):
+    )):
         yield chunk
+
+
+def _openai_direct_for_boundary(boundary) -> bool:
+    """Direct OpenAI applies to private owner legacy turns only (default OFF)."""
+    if getattr(boundary, "public", False):
+        return False
+    if str(getattr(boundary, "interaction_scope", "") or "") != "private_owner":
+        return False
+    try:
+        from nana.brain.openai_direct_client import openai_direct_private_enabled
+    except Exception:
+        return False
+    return openai_direct_private_enabled()
+
+
+def _private_chat_stream(stream_llmgate, *, boundary, model_name, messages, max_tokens, temperature):
+    """Return the private stream source; LLMGate unchanged unless direct is enabled."""
+    if not _openai_direct_for_boundary(boundary):
+        return stream_llmgate(
+            model_name=model_name,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+    return _direct_then_llmgate_stream(
+        stream_llmgate,
+        model_name=model_name,
+        messages=messages,
+        max_tokens=max_tokens,
+        temperature=temperature,
+    )
+
+
+def _direct_then_llmgate_stream(stream_llmgate, *, model_name, messages, max_tokens, temperature):
+    from nana.brain.openai_direct_client import OpenAIDirectUnavailable, stream_openai_direct_messages
+
+    try:
+        yield from stream_openai_direct_messages(messages, max_tokens=max_tokens, temperature=temperature)
+        return
+    except OpenAIDirectUnavailable:
+        pass  # failed before any text: the LLMGate route takes the whole turn
+    yield from stream_llmgate(
+        model_name=model_name,
+        messages=messages,
+        max_tokens=max_tokens,
+        temperature=temperature,
+    )
 
 
 def create_chat_completion_with_fallback(**kwargs):

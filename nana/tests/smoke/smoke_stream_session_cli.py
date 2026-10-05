@@ -114,7 +114,7 @@ class SessionCliTests(unittest.TestCase):
     def test_powershell_entry_runs_fake_session_and_restores_title(self):
         script = ROOT / "tools" / "start_stream_voice_host.ps1"
         command = ("$before=$Host.UI.RawUI.WindowTitle; "
-                   "& '" + str(script).replace("'", "''") + "' -Demo -InCurrentWindow -NoPause -PythonPath '"
+                   "& '" + str(script).replace("'", "''") + "' -Demo -PublicVisualSignals -InCurrentWindow -NoPause -PythonPath '"
                    + sys.executable.replace("'", "''") + "'; "
                    "$runExit=$LASTEXITCODE; "
                    "if($Host.UI.RawUI.WindowTitle -ne $before){throw 'title_not_restored'}; exit $runExit")
@@ -126,6 +126,7 @@ class SessionCliTests(unittest.TestCase):
         self.assertEqual(records[-1]["turns_delivered"], 3)
         self.assertEqual(records[-1]["fake_playback_calls"], 3)
         self.assertTrue(records[-1]["flags_restored"])
+        self.assertIn("Public visual signals: enabled for this session.", result.stdout)
 
     @unittest.skipUnless(os.name == "nt", "Windows console signals")
     def test_windows_console_ctrl_c_reaches_python_and_releases_session(self):

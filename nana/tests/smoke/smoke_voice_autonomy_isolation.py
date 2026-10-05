@@ -2,17 +2,72 @@
 
 from __future__ import annotations
 
-import sys
+import ast
 import threading
 from pathlib import Path
+import types
 
 
-ROOT = Path(__file__).resolve().parents[3]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+NANA_ROOT = Path(__file__).resolve().parents[2]
 
-from nana.cli import app
-from nana.voice.engine import VoiceEngine
+
+def _function_node(path, name, *, class_name=None):
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    body = tree.body
+    if class_name is not None:
+        owner = next(
+            node
+            for node in body
+            if isinstance(node, ast.ClassDef) and node.name == class_name
+        )
+        body = owner.body
+    return next(
+        node
+        for node in body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == name
+    )
+
+
+def _load_guarded_surfaces():
+    engine_path = NANA_ROOT / "voice" / "engine.py"
+    methods = [
+        _function_node(engine_path, "_update_state", class_name="VoiceEngine"),
+        _function_node(
+            engine_path,
+            "stop_lipsync_if_idle",
+            class_name="VoiceEngine",
+        ),
+    ]
+    class_node = ast.ClassDef(
+        name="VoiceEngine",
+        bases=[],
+        keywords=[],
+        body=methods,
+        decorator_list=[],
+    )
+    engine_module = ast.Module(body=[class_node], type_ignores=[])
+    ast.fix_missing_locations(engine_module)
+    engine_namespace = {}
+    exec(compile(engine_module, str(engine_path), "exec"), engine_namespace)
+
+    app_path = NANA_ROOT / "cli" / "app.py"
+    app_node = _function_node(app_path, "_real_autonomy_lipsync_stop")
+    app_module = ast.Module(body=[app_node], type_ignores=[])
+    ast.fix_missing_locations(app_module)
+    app_namespace = {}
+    exec(compile(app_module, str(app_path), "exec"), app_namespace)
+    return (
+        engine_namespace["VoiceEngine"],
+        types.SimpleNamespace(
+            _real_autonomy_lipsync_stop=app_namespace[
+                "_real_autonomy_lipsync_stop"
+            ]
+        ),
+    )
+
+
+VoiceEngine, app = _load_guarded_surfaces()
 
 
 class FakeLipsync:

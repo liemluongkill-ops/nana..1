@@ -8,6 +8,7 @@ no Discord send, and no game input.
 from __future__ import annotations
 
 import re
+import math
 import threading
 import time
 from dataclasses import dataclass
@@ -239,6 +240,16 @@ class MoodSnapshot:
         return data
 
 
+@dataclass(frozen=True, slots=True)
+class MoodExpressionSnapshot:
+    """Pure model-facing mood values captured without owner mutation."""
+
+    tone: str
+    energy: float
+    focus: float
+    tension: float
+
+
 def _social_temperature_snapshot() -> dict[str, Any]:
     """Reference social room temperature from social_session, never infer it here."""
     try:
@@ -340,6 +351,42 @@ class MoodContinuity:
             persisted_events=int(state.get("persisted_events") or 0),
             internal_mood=internal,
             social_temperature=_social_temperature_snapshot(),
+        )
+
+    def capture_expression_snapshot(
+        self,
+        *,
+        captured_at: float | None = None,
+    ) -> MoodExpressionSnapshot:
+        """Calculate the current expression view without advancing owner state."""
+
+        now = _now() if captured_at is None else float(captured_at)
+        with self._lock:
+            state = dict(self._state)
+
+        try:
+            last_decay = float(state.get("last_decay") or now)
+        except (TypeError, ValueError):
+            last_decay = now
+        elapsed = max(0.0, now - last_decay)
+        ratio = min(1.0, elapsed / DECAY_WINDOW_SECONDS) if elapsed >= 1.0 else 0.0
+        for key, baseline in BASELINE.items():
+            try:
+                current = float(state.get(key))
+            except (TypeError, ValueError):
+                current = baseline
+            if not math.isfinite(current):
+                current = baseline
+            current = max(0.0, min(1.0, current))
+            state[key] = max(
+                0.0,
+                min(1.0, current + (baseline - current) * ratio),
+            )
+        return MoodExpressionSnapshot(
+            tone=_derive_mood(state),
+            energy=float(state["energy"]),
+            focus=float(state["focus"]),
+            tension=float(state["tension"]),
         )
 
     def observe_text(
@@ -491,6 +538,15 @@ _MOOD = MoodContinuity()
 
 def get_mood_continuity() -> MoodContinuity:
     return _MOOD
+
+
+def capture_mood_expression_snapshot(
+    *,
+    captured_at: float | None = None,
+) -> MoodExpressionSnapshot:
+    return get_mood_continuity().capture_expression_snapshot(
+        captured_at=captured_at,
+    )
 
 
 def observe_mood_text(

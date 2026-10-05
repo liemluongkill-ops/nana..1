@@ -124,6 +124,7 @@ class _FakeLipsync:
         on_done=None,
         output_stream_factory=None,
         callback_output=False,
+        on_first_audio=None,
     ):
         del samplerate, startup_buffer_ms, stall_timeout_s, output_stream_factory
         del callback_output
@@ -140,6 +141,8 @@ class _FakeLipsync:
                         break
             if parts:
                 self.played = np.concatenate(parts)
+                if on_first_audio is not None:
+                    on_first_audio()
             if on_state:
                 on_state("playing")
                 on_state("done")

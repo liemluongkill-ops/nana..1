@@ -1,7 +1,7 @@
 # Nana Stardew Adapter V2 Spec
 
-**Status:** ACTIVE through STARDEW-V2-8G - dry-run ack, validator, movement-plan preview, and executor-intent preview are live-verified as preview-only/no-input. Python smoke total 366/366 + latest ModEntry static smoke 76/76. Do not start real executor/input without explicit user approval.  
-**Created:** 2026-06-19  
+**Status:** ACTIVE through STARDEW-V2-8G - dry-run ack, validator, movement-plan preview, and executor-intent preview are live-verified as preview-only/no-input. Python smoke total 366/366 + latest ModEntry static smoke 76/76. Do not start real executor/input without explicit user approval.
+**Created:** 2026-06-19
 **Purpose:** Lock down the contract before any code to prevent another 200-file expansion.
 
 ---

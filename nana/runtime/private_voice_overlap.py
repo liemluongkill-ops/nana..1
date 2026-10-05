@@ -14,6 +14,8 @@ import time
 import uuid
 from typing import Callable
 
+from nana.runtime.private_voice_receipts import PrivateVoiceContext
+
 
 _SENTENCE_ENDINGS = frozenset(".!?。！？")
 _BOUNDARY_CLOSERS = frozenset("\"'”’)]}")
@@ -36,6 +38,8 @@ class OverlapCommitRequest:
     cancel_event: threading.Event
     turn_started_at: float
     lead_committed_at: float
+    receipt_context: PrivateVoiceContext | None = None
+    receipt_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -49,6 +53,8 @@ class OverlapQueueItem:
     lead_committed_at: float
     voice_mode: str = "full"
     ticket: int = 0
+    receipt_context: PrivateVoiceContext | None = None
+    receipt_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -108,6 +114,7 @@ class PrivateVoiceOverlapTurn:
         coalesce_ms: int,
         turn_started_at: float | None = None,
         turn_id: str | None = None,
+        receipt_context: PrivateVoiceContext | None = None,
     ) -> None:
         self.turn_id = str(turn_id or uuid.uuid4().hex)
         self.turn_started_at = (
@@ -119,6 +126,7 @@ class PrivateVoiceOverlapTurn:
         self.tail_future: Future = Future()
         self.cancel_event = threading.Event()
         self._commit_callback = commit_callback
+        self.receipt_context = receipt_context
         self._lock = threading.RLock()
         self._buffer = ""
         self._candidate_end: int | None = None
@@ -193,6 +201,7 @@ class PrivateVoiceOverlapTurn:
                 cancel_event=self.cancel_event,
                 turn_started_at=self.turn_started_at,
                 lead_committed_at=committed_at,
+                receipt_context=self.receipt_context,
             )
             try:
                 ticket = int(self._commit_callback(request) or 0)

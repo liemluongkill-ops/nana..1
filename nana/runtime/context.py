@@ -1,9 +1,13 @@
+from dataclasses import dataclass
+import hashlib
+import json
 import threading
 import time
 
 import psutil
 
 from nana.config import BROWSER_FRESH_SECONDS
+from nana.runtime.context_contracts import Freshness, SourceSnapshot
 
 try:
     import win32gui
@@ -296,6 +300,129 @@ def current_time_context():
         "part_of_day": part,
         "timezone": "local",
     }
+
+
+def _time_context_at(timestamp):
+    now = time.localtime(timestamp)
+    hour = now.tm_hour
+    if 5 <= hour < 11:
+        part = "sáng"
+    elif 11 <= hour < 14:
+        part = "trưa"
+    elif 14 <= hour < 18:
+        part = "chiều"
+    elif 18 <= hour < 23:
+        part = "tối"
+    else:
+        part = "khuya"
+    return {
+        "date": time.strftime("%Y-%m-%d", now),
+        "date_vi": time.strftime("%d/%m/%Y", now),
+        "time": time.strftime("%H:%M:%S", now),
+        "weekday": time.strftime("%A", now),
+        "part_of_day": part,
+        "timezone": "local",
+    }
+
+
+def _content_revision(value):
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return "sha256-" + hashlib.sha256(encoded).hexdigest()
+
+
+_RUNTIME_SEMANTIC_FIELDS = (
+    "active_app",
+    "active_title",
+    "active_zone",
+    "idle_state",
+    "in_flow",
+)
+_BROWSER_SEMANTIC_FIELDS = (
+    "available",
+    "browser",
+    "url",
+    "title",
+    "kind",
+    "reason",
+    "page_heading",
+    "meta_description",
+    "selected_text",
+    "social_post_text",
+    "social_vibe",
+    "local_summary",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeContextSources:
+    runtime_context: SourceSnapshot
+    browser_state: SourceSnapshot
+
+
+def capture_runtime_context_sources(*, captured_at, captured_monotonic_at):
+    """Deep-freeze runtime and browser owners under ``context_lock``."""
+
+    from nana.runtime.browser_state import (
+        classify_browser_freshness,
+        normalized_browser_observed_at,
+    )
+
+    del captured_monotonic_at  # Wall-clock source timestamps own freshness.
+    with context_lock:
+        runtime_payload = {
+            key: value
+            for key, value in context_state.items()
+            if key != "browser"
+        }
+        runtime_payload["time"] = _time_context_at(captured_at)
+        browser_payload = dict(context_state.get("browser") or {})
+
+        raw_observed_at = browser_payload.get("last_update")
+        observed_at = normalized_browser_observed_at(raw_observed_at, captured_at)
+        freshness = (
+            classify_browser_freshness(raw_observed_at, captured_at)
+            if browser_payload.get("available")
+            else Freshness.UNKNOWN
+        )
+        browser_payload["last_update"] = observed_at
+        browser_payload["age_seconds"] = (
+            max(0.0, float(captured_at) - observed_at)
+            if observed_at is not None
+            else None
+        )
+        browser_payload["fresh"] = freshness is Freshness.FRESH
+
+        runtime_semantics = {
+            key: runtime_payload.get(key)
+            for key in _RUNTIME_SEMANTIC_FIELDS
+        }
+        browser_semantics = {
+            key: browser_payload.get(key)
+            for key in _BROWSER_SEMANTIC_FIELDS
+        }
+        runtime_source = SourceSnapshot(
+            source="runtime_context",
+            revision=_content_revision(runtime_semantics),
+            observed_at=None,
+            captured_at=captured_at,
+            freshness=Freshness.UNKNOWN,
+            payload=runtime_payload,
+        )
+        browser_source = SourceSnapshot(
+            source="browser_state",
+            revision=_content_revision(browser_semantics),
+            observed_at=observed_at,
+            captured_at=captured_at,
+            freshness=freshness,
+            payload=browser_payload,
+        )
+    return RuntimeContextSources(runtime_source, browser_source)
 
 
 def context_snapshot():

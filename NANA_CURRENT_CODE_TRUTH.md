@@ -1,9 +1,94 @@
 # Nana Current Code Truth
 
-> Public export note (2026-09-16): this is a sanitized snapshot of accepted
-> canonical architecture, not a live deployment report. Private evidence
-> locations, active provider overrides, runtime logs, memory data, and pending
-> workstream state are intentionally excluded.
+## 2026-10-06 - A4 validation order corrected
+
+The 2026-10-05 excess-argument defect described below is closed in the
+current source. In brain/openai_direct_client.py, private_route_command_lines
+handles len(parts) > 3 before set_private_route_for_session. Malformed arity
+returns usage and never invokes the setter. Valid commands retain their path.
+An AST comparison against the prior frozen client shows this is the only
+top-level function changed in that module.
+
+Source SHA-256:
+0f11e2d6c31c344ee755949148b4e807190ac3ac77626c70c732d6105529379f.
+Direct smoke SHA-256:
+8a011bbc813138c7fd6c400d05622e12749d8b0d3d766578003c844ae59dda38.
+
+Independent coordinator checks: old defect reproduced, corrected case passes,
+12/12 invalid-command/state checks, current fake route smoke 17/17. Network,
+subprocess and protected-data guards were active. No real provider call,
+live Core restart or production route/credential write was performed.
+Evidence: <LOCAL_REVIEW>/NANA_WIKI_MAINTENANCE_20261006/COORDINATOR_REVIEW.md.
+
+This closes only A4 excess-argument mutation at the source/offline boundary.
+A process already running old code needs a normal restart before it gains
+the fix; live activation was not verified. Provider/voice and broader Context
+Runtime acceptance scopes do not advance because of this correction.
+
+
+## 2026-10-05 - Private provider selector and known A4 limitation
+
+brain/openai_direct_client.py owns the direct HTTP transport and process-local
+route selector. brain/gpt.py applies it only to non-public private_owner legacy
+calls. Sync failure/empty content uses the existing LLMGate chain; streaming
+failure before first text permits fallback. After partial text, no full-answer
+replay is attempted, so a partial reply can remain incomplete.
+
+The deployment enables NANA_PRIVATE_LLM_PROVIDER=openai_direct via <NANA_REPO>/.env:
+gpt-5.6-terra, effort none, OpenAI direct endpoint. Source default is llmgate.
+Public/operator/bridge/CUM2/autonomy/sidecars and Task 13 compiled Context
+Runtime transport do not adopt this direct route. Private NanaApp uses Core,
+but this routing fact is not a new App/voice acceptance receipt.
+
+Startup config and /llm-route-status expose the route; /llm-provider changes
+the process route without persisting .env. It is registered as a backstage
+command. Its model-name regex checks syntax, not remote model availability.
+Known A4 bug: excess-argument validation runs after the setter mutates settings.
+The command can report Not changed while route/model/effort actually changed.
+An isolated function-only coordinator probe reproduced it. Fix ownership is
+Core; do not call all command validation fail-closed or complete yet.
+
+The earlier 6/6 real-provider packet belongs to the pre-A1-A5 revision.
+The later owner-reported single-Core startup is config/status evidence, with
+zero measured turns in that process. Neither grants new TTS/App acceptance.
+Frozen hashes and review:
+<LOCAL_REVIEW>/NANA_WIKI_MAINTENANCE_20261005/COORDINATOR_REVIEW.md.
+Living note: <NANA_REPO>/nana/docs/LLM_PROVIDER_ROUTE_STATE.md.
+Older sections below retain their original scope/date; this handoff does not
+reconcile unrelated Context Runtime tasks.
+
+
+## 2026-10-02 - Runtime ownership additions
+
+The legacy CLI hot path still starts at __main__.py -> cli/app.py ->
+cli/handle_text.py -> cli/chat_turn_pipeline.py -> brain/gpt.py.
+This summary adds the newer local workstreams; old sections below retain
+their original verification dates and are not a fresh whole-runtime audit.
+
+Context Runtime owns one-turn scope/selection/compilation via
+runtime/context_contracts.py, context_adapters.py, context_runtime.py,
+context_compiler.py, context_shadow.py and context_telemetry.py. Domain source
+owners remain in Memory V2, awareness, persona/affect and social session.
+require_canonical_dispatch_ready() still fails closed. The new canonical
+compiler path is not the default production prompt path.
+
+Private Web Chat has its own transport/coordinator/observer boundary in
+runtime/private_web_chat_server.py, private_turn_coordinator.py and
+private_turn_observer.py, using the existing chat pipeline and VoiceEngine.
+The private bridge default ON has its own owner receipt; public visual remains
+default OFF. The 2026-10-01 ordering/admission repair has loopback evidence only.
+Public visual timing remains under investigation after Stage C failed its
+local <=100 ms A/V target. Do not rewrite the private path to hide this issue.
+
+Read NANA_CURRENT_STATUS.md for exact packet references and claim limits, and
+the latest <NANA_REPO>/nana/docs/CONTEXT_RUNTIME_STATE.md / STREAM_V1_STATE.md for
+the owning code/tests. This reconciliation changed no Core source or flags.
+
+## Historical material
+
+Sections below keep their original dates and claim limits. Earlier
+labels such as current, pending and next step are historical; the
+reconciled overview above and newer owning local evidence take priority.
 
 ## 2026-09-13 Memory v2 Phase 2 Code Truth
 
@@ -31,6 +116,7 @@ truth, not a claim of semantic-provider quality or livestream readiness.
 
 Evidence packet: `<NANA_REPO>\nana\MEMORY_V2_PHASE2_FINAL_CLOSEOUT_20260913.md`
 
+## Historical document heading: Nana Current Code Truth
 
 Last checked: 2026-08-12 for the general runtime baseline; the 3D avatar
 section alone was refreshed from current code/build evidence on 2026-09-05.
