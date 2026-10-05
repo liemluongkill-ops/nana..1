@@ -73,8 +73,8 @@
     {
       "path": "NANA_B6_WIRING_DIAGRAM.svg",
       "source": "public-template-or-document",
-      "bytes": 13796,
-      "sha256": "e75e4debf63473e95725362f4995887ac9397d8c816764fc7cce5cbb2ccb537e"
+      "bytes": 13558,
+      "sha256": "1cc10bcd27ef23fa590ca485c94165be100d47099b0d0a3673e408d4c240c802"
     },
     {
       "path": "NANA_CURRENT_CODE_TRUTH.md",
@@ -139,8 +139,8 @@
     {
       "path": "NanaBridge/NanaBridge.csproj",
       "source": "public-template-or-document",
-      "bytes": 1302,
-      "sha256": "98060858a7572ea4408a804a845280c9b2c82427a98793981060590584813402"
+      "bytes": 1267,
+      "sha256": "78e380d96e215db1faf8cde594a6b0d3600bddf72fe8151d9c5e72c5b2ad39e8"
     },
     {
       "path": "NanaBridge/manifest.json",
